@@ -19,7 +19,7 @@ from project.algorithms.assignment import assign_nearest_available_picker
 from project.visualization.renderer import Renderer
 from project.visualization.colors import PICKER_COLORS
 from project.visualization.ui_state import UIState
-from project.config import FPS, TILE_SIZE, PADDING, LEFT_PANEL_WIDTH
+from project.config import FPS
 
 def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order_shelves: list[tuple[int, int]]) -> tuple[list[tuple[int, int]], bool, float]:
     targets = [packing_station]
@@ -72,8 +72,8 @@ def run_ui():
     metrics = slotting_engine.optimize_slotting(inventory, layout, strategies[strategy_idx], forecaster)
     
     packing_station = layout.packing_station
-    pixel_x = PADDING + LEFT_PANEL_WIDTH + PADDING + packing_station[1] * TILE_SIZE + TILE_SIZE // 2
-    pixel_y = PADDING + packing_station[0] * TILE_SIZE + TILE_SIZE // 2
+    pixel_x = renderer.grid_offset_x + packing_station[1] * renderer.tile_size + renderer.tile_size // 2
+    pixel_y = renderer.grid_offset_y + packing_station[0] * renderer.tile_size + renderer.tile_size // 2
     
     pickers = [Picker(i+1, packing_station, PICKER_COLORS[i % len(PICKER_COLORS)]) for i in range(8)]
     for p in pickers:
@@ -83,19 +83,21 @@ def run_ui():
     demo_mode = False
     tick_counter = 0
 
-    grid_offset_x = PADDING + LEFT_PANEL_WIDTH + PADDING
-    grid_offset_y = PADDING
+    renderer._update_layout(layout, *renderer.screen.get_size())
 
     while running:
         dt = clock.tick(FPS)
         tick_counter += 1
         ui_state.mouse_pos = pygame.mouse.get_pos()
+        renderer._update_layout(layout, *renderer.screen.get_size())
+        grid_offset_x = renderer.grid_offset_x
+        grid_offset_y = renderer.grid_offset_y
         
         # Determine Hovered Cell
         mx, my = ui_state.mouse_pos
-        if grid_offset_x <= mx < grid_offset_x + layout.cols * TILE_SIZE and grid_offset_y <= my < grid_offset_y + layout.rows * TILE_SIZE:
-            r = (my - grid_offset_y) // TILE_SIZE
-            c = (mx - grid_offset_x) // TILE_SIZE
+        if grid_offset_x <= mx < grid_offset_x + layout.cols * renderer.tile_size and grid_offset_y <= my < grid_offset_y + layout.rows * renderer.tile_size:
+            r = (my - grid_offset_y) // renderer.tile_size
+            c = (mx - grid_offset_x) // renderer.tile_size
             ui_state.hovered_cell = (r, c)
         else:
             ui_state.hovered_cell = None
@@ -104,6 +106,12 @@ def run_ui():
             if event.type == pygame.QUIT:
                 running = False
                 
+            elif event.type == pygame.VIDEORESIZE:
+                self_size = (event.w, event.h)
+                renderer.screen = pygame.display.set_mode(self_size, pygame.RESIZABLE)
+                renderer._update_layout(layout, *self_size)
+                continue
+
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1: # Left click
                 if not demo_mode:
                     for sku_id, rect in ui_state.catalog_rects.items():
@@ -210,7 +218,7 @@ def run_ui():
                 break
 
         for p in pickers:
-            completed_order = p.update(dt, TILE_SIZE, PADDING, grid_offset_x, grid_offset_y)
+            completed_order = p.update(dt, renderer.tile_size, renderer.padding, grid_offset_x, grid_offset_y)
             if completed_order:
                 order_manager.complete_order(completed_order)
             

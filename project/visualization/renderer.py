@@ -26,14 +26,57 @@ from project.visualization.colors import (
 class Renderer:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.screen = pygame.display.set_mode((500,500), pygame.RESIZABLE)
         pygame.display.set_caption("Quick-Commerce Dark Store Operations Platform")
-        self.font_tiny = pygame.font.SysFont("Arial", 11)
-        self.font_small = pygame.font.SysFont("Arial", 12)
-        self.font = pygame.font.SysFont("Arial", 14)
-        self.font_large = pygame.font.SysFont("Arial", 18, bold=True)
+        self.base_tile_size = TILE_SIZE
+        self.base_left_panel_width = LEFT_PANEL_WIDTH
+        self.base_sidebar_width = SIDEBAR_WIDTH
+        self.base_padding = PADDING
+        self.scale = 1.0
+        self.tile_size = TILE_SIZE
+        self.left_panel_width = LEFT_PANEL_WIDTH
+        self.sidebar_width = SIDEBAR_WIDTH
+        self.padding = PADDING
+        self.grid_offset_x = PADDING + LEFT_PANEL_WIDTH + PADDING
+        self.grid_offset_y = PADDING
+        self.line_height = 20
+        self._rebuild_fonts()
         self.show_heatmap = True
         
+    def _rebuild_fonts(self):
+        tiny_size = max(9, int(11 * self.scale))
+        small_size = max(10, int(12 * self.scale))
+        normal_size = max(12, int(14 * self.scale))
+        large_size = max(14, int(18 * self.scale))
+        self.font_tiny = pygame.font.SysFont("Arial", tiny_size)
+        self.font_small = pygame.font.SysFont("Arial", small_size)
+        self.font = pygame.font.SysFont("Arial", normal_size)
+        self.font_large = pygame.font.SysFont("Arial", large_size, bold=True)
+        self.line_height = max(18, int(18 * self.scale))
+
+    def _update_layout(self, layout: WarehouseLayout, win_w: int, win_h: int):
+        min_tile = 16
+        min_side = 180
+        min_sidebar = 240
+        target_grid_width = layout.cols * self.base_tile_size
+        target_grid_height = layout.rows * self.base_tile_size
+        available_width = win_w - (self.base_padding * 4 + self.base_left_panel_width + self.base_sidebar_width)
+        available_height = win_h - self.base_padding * 2
+
+        if available_width <= 0 or available_height <= 0:
+            self.scale = 0.5
+        else:
+            self.scale = min(1.0, available_width / target_grid_width, available_height / target_grid_height)
+            self.scale = max(0.45, self.scale)
+
+        self.tile_size = max(min_tile, int(self.base_tile_size * self.scale))
+        self.left_panel_width = max(min_side, int(self.base_left_panel_width * self.scale))
+        self.sidebar_width = max(min_sidebar, int(self.base_sidebar_width * self.scale))
+        self.padding = max(8, int(self.base_padding * self.scale))
+        self.grid_offset_x = self.padding + self.left_panel_width + self.padding
+        self.grid_offset_y = self.padding
+        self._rebuild_fonts()
+
     def _get_heatmap_color(self, value: float) -> tuple:
         if value <= 0: return None
         idx = int(value * (len(HEATMAP_GRADIENT) - 1))
@@ -53,15 +96,18 @@ class Renderer:
                demo_mode: bool, ui_state: UIState):
         self.screen.fill(BG_PRIMARY)
         
-        grid_offset_x = PADDING + LEFT_PANEL_WIDTH + PADDING
-        grid_offset_y = PADDING
+        win_w, win_h = self.screen.get_size()
+        self._update_layout(layout, win_w, win_h)
+        
+        grid_offset_x = self.grid_offset_x
+        grid_offset_y = self.grid_offset_y
         
         # 1. Draw Grid
         heatmap_data = heatmap.get_normalized_heatmap()
         
         for r in range(layout.rows):
             for c in range(layout.cols):
-                rect = pygame.Rect(c * TILE_SIZE + grid_offset_x, r * TILE_SIZE + grid_offset_y, TILE_SIZE, TILE_SIZE)
+                rect = pygame.Rect(c * self.tile_size + grid_offset_x, r * self.tile_size + grid_offset_y, self.tile_size, self.tile_size)
                 cell_type = layout.get_cell_type(r, c)
                 
                 if cell_type == CELL_SHELF:
@@ -79,7 +125,7 @@ class Renderer:
                     if self.show_heatmap:
                         h_color = self._get_heatmap_color(heatmap_data[r, c])
                         if h_color:
-                            s = pygame.Surface((TILE_SIZE, TILE_SIZE))
+                            s = pygame.Surface((self.tile_size, self.tile_size))
                             s.set_alpha(100) # softer blend
                             s.fill(h_color)
                             self.screen.blit(s, (rect.x, rect.y))
@@ -89,7 +135,7 @@ class Renderer:
         for sku in inventory.get_all_skus():
             if sku.location:
                 r, c = sku.location
-                rect = pygame.Rect(c * TILE_SIZE + grid_offset_x + 3, r * TILE_SIZE + grid_offset_y + 3, TILE_SIZE - 6, TILE_SIZE - 6)
+                rect = pygame.Rect(c * self.tile_size + grid_offset_x + 3, r * self.tile_size + grid_offset_y + 3, self.tile_size - 6, self.tile_size - 6)
                 
                 if sku.abc_class == "A": color = ITEM_CLASS_A
                 elif sku.abc_class == "B": color = ITEM_CLASS_B
@@ -116,12 +162,12 @@ class Renderer:
                 for item in picker.active_order.items:
                     if item.location:
                         r, c = item.location
-                        rect = pygame.Rect(c * TILE_SIZE + grid_offset_x, r * TILE_SIZE + grid_offset_y, TILE_SIZE, TILE_SIZE)
+                        rect = pygame.Rect(c * self.tile_size + grid_offset_x, r * self.tile_size + grid_offset_y, self.tile_size, self.tile_size)
                         pygame.draw.rect(self.screen, ITEM_IN_ORDER, rect, 2, border_radius=2)
                     
                 if len(picker.full_path_cells) > 1:
-                    points = [(c * TILE_SIZE + grid_offset_x + TILE_SIZE // 2, r * TILE_SIZE + grid_offset_y + TILE_SIZE // 2) for r, c in picker.full_path_cells]
-                    pygame.draw.lines(self.screen, picker.color, False, points, 4)
+                    points = [(c * self.tile_size + grid_offset_x + self.tile_size // 2, r * self.tile_size + grid_offset_y + self.tile_size // 2) for r, c in picker.full_path_cells]
+                    pygame.draw.lines(self.screen, picker.color, False, points, max(2, int(4 * self.scale)))
 
             # Draw fading trails
             if len(picker.trail) > 1:
@@ -140,16 +186,16 @@ class Renderer:
 
         # 4. LEFT PANEL: Product Catalog & Custom Cart Builder
         if not demo_mode:
-            left_rect = pygame.Rect(PADDING, PADDING, LEFT_PANEL_WIDTH, SCREEN_HEIGHT - PADDING * 2)
+            left_rect = pygame.Rect(self.padding, self.padding, self.left_panel_width, self.screen.get_height() - self.padding * 2)
             lx, ly = self._draw_panel(left_rect, "Cart Builder & Catalog")
             
             # Catalog list
             catalog_surf = self.font.render("Available Products:", True, TEXT_HEADER)
             self.screen.blit(catalog_surf, (lx, ly))
-            ly += 25
+            ly += self.line_height + 5
             
             # Setup a clipping rect for scrollable area
-            clip_rect = pygame.Rect(lx, ly, LEFT_PANEL_WIDTH - 20, 300)
+            clip_rect = pygame.Rect(lx, ly, self.left_panel_width - 20, int(220 * self.scale))
             self.screen.set_clip(clip_rect)
             
             ui_state.catalog_rects.clear()
@@ -164,7 +210,7 @@ class Renderer:
                     seen_names.add(s.product_name)
             
             for sku in unique_skus:
-                item_rect = pygame.Rect(lx, ly - scroll_offset, LEFT_PANEL_WIDTH - 30, 20)
+                item_rect = pygame.Rect(lx, ly - scroll_offset, self.left_panel_width - 30, max(18, int(18 * self.scale)))
                 
                 if item_rect.bottom > clip_rect.top and item_rect.top < clip_rect.bottom:
                     pygame.draw.rect(self.screen, (50, 50, 60), item_rect, border_radius=4)
@@ -179,47 +225,54 @@ class Renderer:
                 ly += 24
                 
             self.screen.set_clip(None)
-            ly = clip_rect.bottom + 15
+            ly = clip_rect.bottom + int(15 * self.scale)
             
             # Custom Cart
             pygame.draw.line(self.screen, (60, 60, 75), (lx, ly), (left_rect.right - 15, ly), 1)
             ly += 15
             cart_surf = self.font.render(f"Current Cart ({len(ui_state.custom_cart)} items):", True, TEXT_HEADER)
             self.screen.blit(cart_surf, (lx, ly))
-            ly += 25
+            ly += self.line_height + 5
             
             for item in ui_state.custom_cart[-10:]:
                 surf = self.font_small.render(f"- {item.product_name}", True, TEXT_SECONDARY)
                 self.screen.blit(surf, (lx + 10, ly))
-                ly += 18
+                ly += max(16, int(16 * self.scale))
                 
             # Buttons
-            submit_rect = pygame.Rect(lx, left_rect.bottom - 40, 100, 25)
+            btn_height = max(28, int(26 * self.scale))
+            btn_width = max(100, int(100 * self.scale))
+            submit_rect = pygame.Rect(lx, left_rect.bottom - btn_height - 10, btn_width, btn_height)
             pygame.draw.rect(self.screen, (46, 204, 113), submit_rect, border_radius=4)
             sub_text = self.font.render("Submit Order", True, (0, 0, 0))
-            self.screen.blit(sub_text, (lx + 10, left_rect.bottom - 36))
+            self.screen.blit(sub_text, (submit_rect.x + 10, submit_rect.y + (btn_height - self.font.get_height()) // 2))
             ui_state.submit_rect = submit_rect
             
-            clear_rect = pygame.Rect(lx + 110, left_rect.bottom - 40, 80, 25)
+            clear_rect = pygame.Rect(submit_rect.right + max(10, int(10 * self.scale)), submit_rect.y, max(80, int(80 * self.scale)), btn_height)
             pygame.draw.rect(self.screen, (231, 76, 60), clear_rect, border_radius=4)
             clr_text = self.font.render("Clear", True, (255, 255, 255))
-            self.screen.blit(clr_text, (lx + 130, left_rect.bottom - 36))
+            self.screen.blit(clr_text, (clear_rect.x + (clear_rect.width - clr_text.get_width()) // 2, clear_rect.y + (btn_height - clr_text.get_height()) // 2))
             ui_state.clear_rect = clear_rect
 
         # 5. RIGHT PANEL: Dark Store Operations Dashboard
-        right_x = grid_offset_x + layout.cols * TILE_SIZE + PADDING
-        right_rect = pygame.Rect(right_x, PADDING, SIDEBAR_WIDTH, SCREEN_HEIGHT - PADDING * 2)
+        grid_pixel_width = layout.cols * self.tile_size
+        right_x = grid_offset_x + grid_pixel_width + self.padding
+        right_rect = pygame.Rect(right_x, self.padding, self.sidebar_width, self.screen.get_height() - self.padding * 2)
         rx, ry = self._draw_panel(right_rect, "Operations Dashboard")
         
-        def draw_text(text, color, bold=False):
+        footer_top = right_rect.bottom - max(90, int(80 * self.scale))
+        def draw_text(text, color, bold=False, allow_overflow=False):
             nonlocal ry
+            if ry + self.line_height > footer_top and not allow_overflow:
+                return False
             f = self.font_large if bold else self.font
             surf = f.render(text, True, color)
             self.screen.blit(surf, (rx, ry))
-            ry += 22
+            ry += self.line_height
+            return True
 
         draw_text(f"Mode: {'DEMO PRESENTATION' if demo_mode else 'MANUAL'} | Time: {order_manager.time_of_day}", (46, 204, 113) if demo_mode else TEXT_SECONDARY)
-        ry += 10
+        ry += max(8, int(8 * self.scale))
         
         # Warehouse Stats
         num_skus = len(inventory.get_all_skus())
@@ -275,11 +328,11 @@ class Renderer:
         draw_text(f"Storage Dist: {metrics.get('avg_storage_distance', 0.0):.1f} steps", TEXT_PRIMARY)
         
         # Controls footer
-        ry = right_rect.bottom - 80
-        draw_text("Controls", TEXT_HEADER, True)
-        draw_text("[D] Demo Mode | [SPACE] Random Orders", TEXT_SECONDARY)
-        draw_text("[S] Change Strategy | [O] Re-slot", TEXT_SECONDARY)
-        draw_text("[H] Toggle Heatmap | [T] Cycle Time of Day", TEXT_SECONDARY)
+        ry = right_rect.bottom - max(90, int(80 * self.scale))
+        draw_text("Controls", TEXT_HEADER, True, allow_overflow=True)
+        draw_text("[D] Demo Mode | [SPACE] Random Orders", TEXT_SECONDARY, allow_overflow=True)
+        draw_text("[S] Change Strategy | [O] Re-slot", TEXT_SECONDARY, allow_overflow=True)
+        draw_text("[H] Toggle Heatmap | [T] Cycle Time of Day", TEXT_SECONDARY, allow_overflow=True)
 
         # 6. Tooltip Overlay (Drawn last so it's on top)
         if hovered_sku_info:
@@ -304,7 +357,9 @@ class Renderer:
             self.screen.blit(surf, (tx, ty))
 
         if ui_state.reslot_timer > 0:
-            banner_rect = pygame.Rect(SCREEN_WIDTH//2 - 200, 30, 400, 50)
+            banner_width = max(280, int(360 * self.scale))
+            banner_height = max(40, int(48 * self.scale))
+            banner_rect = pygame.Rect(self.screen.get_width() // 2 - banner_width // 2, self.padding * 2, banner_width, banner_height)
             pygame.draw.rect(self.screen, (46, 204, 113), banner_rect, border_radius=10)
             pygame.draw.rect(self.screen, (255, 255, 255), banner_rect, width=2, border_radius=10)
             surf = self.font_large.render(ui_state.reslot_message, True, (0, 0, 0))
