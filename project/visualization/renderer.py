@@ -356,6 +356,14 @@ class Renderer:
             surf = self.font.render(f"Class: {hovered_sku_info.abc_class}", True, c_color)
             self.screen.blit(surf, (tx, ty))
 
+        # Render sliders when in manual mode: draw to the right sidebar area if present
+        try:
+            if not demo_mode and hasattr(ui_state, 'sliders') and ui_state.sliders:
+                for s in ui_state.sliders:
+                    s.draw(self.screen, self.font)
+        except Exception:
+            pass
+
         if ui_state.reslot_timer > 0:
             banner_width = max(280, int(360 * self.scale))
             banner_height = max(40, int(48 * self.scale))

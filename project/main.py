@@ -5,6 +5,7 @@ import sys
 import random
 import argparse
 import pygame
+import time
 from project.warehouse.layout import WarehouseLayout
 from project.warehouse.inventory import InventoryManager
 from project.algorithms.slotting import SlottingEngine
@@ -19,7 +20,51 @@ from project.algorithms.assignment import assign_nearest_available_picker
 from project.visualization.renderer import Renderer
 from project.visualization.colors import PICKER_COLORS
 from project.visualization.ui_state import UIState
-from project.config import FPS
+from project.config import FPS, PICKER_BASE_SPEED
+
+
+# --- Lightweight Slider widget (ported from manual_sim for manual-mode control) ---
+class Slider:
+    def __init__(self, x, y, w, min_val, max_val, initial_val, label):
+        self.rect = pygame.Rect(x, y, w, 10)
+        self.min_val = min_val
+        self.max_val = max_val
+        self.val = initial_val
+        self.label = label
+        self.handle_radius = 8
+        self.update_handle_pos()
+        self.dragging = False
+
+    def update_handle_pos(self):
+        fraction = (self.val - self.min_val) / (self.max_val - self.min_val)
+        self.handle_x = self.rect.x + int(fraction * self.rect.width)
+
+    def set_rect(self, x, y, w):
+        self.rect.x = x
+        self.rect.y = y
+        self.rect.width = w
+        self.update_handle_pos()
+
+    def draw(self, surface, font_obj):
+        lbl = font_obj.render(f"{self.label}: {int(self.val) if self.val == int(self.val) else round(self.val,1)}", True, (200,200,200))
+        surface.blit(lbl, (self.rect.x, self.rect.y - 18))
+        pygame.draw.rect(surface, (180,190,200), self.rect, border_radius=4)
+        pygame.draw.circle(surface, (142,68,173), (self.handle_x, self.rect.y + 5), self.handle_radius)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            mouse_pos = event.pos
+            if ((mouse_pos[0] - self.handle_x) ** 2 + (mouse_pos[1] - (self.rect.y + 5)) ** 2) ** 0.5 <= self.handle_radius + 4:
+                self.dragging = True
+        elif event.type == pygame.MOUSEBUTTONUP:
+            self.dragging = False
+        elif event.type == pygame.MOUSEMOTION and self.dragging:
+            mx = max(self.rect.x, min(event.pos[0], self.rect.x + self.rect.width))
+            fraction = (mx - self.rect.x) / self.rect.width
+            self.val = self.min_val + fraction * (self.max_val - self.min_val)
+            self.handle_x = mx
+            return True
+        return False
 
 def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order_shelves: list[tuple[int, int]]) -> tuple[list[tuple[int, int]], bool, float]:
     targets = [packing_station]
@@ -56,6 +101,18 @@ def run_ui():
     renderer = Renderer()
     ui_state = UIState()
     clock = pygame.time.Clock()
+
+    # --- Manual-mode sliders (position/layout updated each frame) ---
+    slider_width = max(140, int(renderer.sidebar_width - 40))
+    sx = max(20, renderer.screen.get_width() - renderer.sidebar_width + 20)
+    sy = renderer.padding + 50
+    slider_order_size = Slider(sx, sy, slider_width, 2, 11, 4, "Basket Order Size (SKUs)")
+    slider_speed = Slider(sx, sy + 60, slider_width, 0.5, 4.0, 1.0, "Picker Speed Factor")
+    slider_surge_freq = Slider(sx, sy + 120, slider_width, 5, 60, 20, "Demand Surge Timer (s)")
+    slider_hot_intensity = Slider(sx, sy + 180, slider_width, 1, 40, 8, "Surge Intensity")
+    sliders = [slider_order_size, slider_speed, slider_surge_freq, slider_hot_intensity]
+    last_surge_time = time.time()
+    ui_state.sliders = sliders
     
     inventory.generate_inventory()
     shelves = layout.get_shelf_cells()
@@ -92,6 +149,13 @@ def run_ui():
         renderer._update_layout(layout, *renderer.screen.get_size())
         grid_offset_x = renderer.grid_offset_x
         grid_offset_y = renderer.grid_offset_y
+        # Update slider geometry to stick inside right sidebar
+        slider_width = max(140, int(renderer.sidebar_width - 40))
+        sx = max(renderer.screen.get_width() - renderer.sidebar_width + renderer.padding + 10, renderer.screen.get_width() - slider_width - 20)
+        sy = renderer.padding + 40
+        for i, s in enumerate(sliders):
+            s.set_rect(sx, sy + i * int(48 * renderer.scale), slider_width)
+        ui_state.sliders = sliders
         
         # Determine Hovered Cell
         mx, my = ui_state.mouse_pos
@@ -102,23 +166,34 @@ def run_ui():
         else:
             ui_state.hovered_cell = None
 
+        slider_changed = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-                
-            elif event.type == pygame.VIDEORESIZE:
+                continue
+
+            if event.type == pygame.VIDEORESIZE:
                 self_size = (event.w, event.h)
                 renderer.screen = pygame.display.set_mode(self_size, pygame.RESIZABLE)
                 renderer._update_layout(layout, *self_size)
                 continue
 
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1: # Left click
+            # Feed events to sliders first (manual-mode interactive controls)
+            for s in sliders:
+                try:
+                    if s.handle_event(event):
+                        slider_changed = True
+                except Exception:
+                    pass
+
+            # Mouse clicks and other events
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1: # Left click
                 if not demo_mode:
                     for sku_id, rect in ui_state.catalog_rects.items():
                         if rect.collidepoint(event.pos):
                             sku = inventory.get_sku(sku_id)
                             if sku: ui_state.add_to_cart(sku)
-                            
+
                     if ui_state.submit_rect and ui_state.submit_rect.collidepoint(event.pos):
                         if ui_state.custom_cart:
                             order_manager.order_counter += 1
@@ -129,18 +204,18 @@ def run_ui():
                             )
                             order_manager.pending_orders.append(order)
                             ui_state.clear_cart()
-                            
+
                     if ui_state.clear_rect and ui_state.clear_rect.collidepoint(event.pos):
                         ui_state.clear_cart()
 
-            elif event.type == pygame.MOUSEWHEEL:
+            if event.type == pygame.MOUSEWHEEL:
                 if not demo_mode:
                     ui_state.catalog_scroll_y = max(0, min(1000, ui_state.catalog_scroll_y - event.y * 20))
 
-            elif event.type == pygame.KEYDOWN:
+            if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     for _ in range(3):
-                        order_manager.generate_customer_order()
+                        order_manager.generate_customer_order(size=int(slider_order_size.val))
                 elif event.key == pygame.K_d:
                     demo_mode = not demo_mode
                 elif event.key == pygame.K_t:
@@ -189,10 +264,10 @@ def run_ui():
 
         if demo_mode:
             if tick_counter % 60 == 0:
-                order_manager.generate_customer_order()
+                order_manager.generate_customer_order(size=int(slider_order_size.val))
             if tick_counter % 1000 == 0:
                 for sku in inventory.get_all_skus():
-                    inventory.update_demand(sku.sku_id, random.uniform(0, 2))
+                    inventory.update_demand(sku.sku_id, random.uniform(0, slider_hot_intensity.val))
                 forecaster.update_forecasts(inventory)
                 inventory.classify_abc()
                 metrics = slotting_engine.optimize_slotting(inventory, layout, strategies[strategy_idx], forecaster)
@@ -203,6 +278,24 @@ def run_ui():
                     new_dist = metrics.get('new_dist_total', 1.0)
                     red = max(0.0, (old_dist - new_dist) / old_dist * 100) if old_dist > 0 else 0.0
                     ui_state.reslot_message = f"{metrics.get('items_moved', 0)} items relocated | Est. travel reduction: {red:.1f}%"
+
+        # Manual-mode periodic surge driven by sliders
+        if not demo_mode:
+            if time.time() - last_surge_time > slider_surge_freq.val:
+                for _ in range(3):
+                    sku = random.choice(inventory.get_all_skus())
+                    inventory.update_demand(sku.sku_id, random.uniform(0, slider_hot_intensity.val))
+                forecaster.update_forecasts(inventory)
+                inventory.classify_abc()
+                metrics = slotting_engine.optimize_slotting(inventory, layout, strategies[strategy_idx], forecaster)
+                if metrics.get("executed"):
+                    ui_state.reslot_timer = 120
+                    ui_state.reslot_moved_skus = set(metrics.get("moved_skus", []))
+                    old_dist = metrics.get('old_dist_total', 1.0)
+                    new_dist = metrics.get('new_dist_total', 1.0)
+                    red = max(0.0, (old_dist - new_dist) / old_dist * 100) if old_dist > 0 else 0.0
+                    ui_state.reslot_message = f"{metrics.get('items_moved', 0)} items relocated | Est. travel reduction: {red:.1f}%"
+                last_surge_time = time.time()
 
         if ui_state.reslot_timer > 0:
             ui_state.reslot_timer -= 1
@@ -218,6 +311,8 @@ def run_ui():
                 break
 
         for p in pickers:
+            # apply manual slider speed multiplier
+            p.speed = PICKER_BASE_SPEED * max(0.1, slider_speed.val)
             completed_order = p.update(dt, renderer.tile_size, renderer.padding, grid_offset_x, grid_offset_y)
             if completed_order:
                 order_manager.complete_order(completed_order)

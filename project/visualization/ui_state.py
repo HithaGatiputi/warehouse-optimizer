@@ -22,6 +22,8 @@ class UIState:
     reslot_timer: int = 0
     reslot_message: str = ""
     reslot_moved_skus: set[str] = field(default_factory=set)
+    # optional UI widgets for manual mode
+    sliders: list = field(default_factory=list)
     
     def add_to_cart(self, sku: SKUInfo):
         if len(self.custom_cart) < 15:
