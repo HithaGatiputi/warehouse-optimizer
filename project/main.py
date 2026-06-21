@@ -5,6 +5,7 @@ import sys
 import random
 import argparse
 import pygame
+import pygame.gfxdraw
 import time
 from project.warehouse.layout import WarehouseLayout
 from project.warehouse.inventory import InventoryManager
@@ -18,7 +19,7 @@ from project.simulation.heatmap import HeatmapManager
 from project.simulation.orders import OrderManager, Order
 from project.algorithms.assignment import assign_nearest_available_picker
 from project.visualization.renderer import Renderer
-from project.visualization.colors import PICKER_COLORS
+from project.visualization.colors import PICKER_COLORS, TEXT_PRIMARY, SLIDER_TRACK, SLIDER_FILL
 from project.visualization.ui_state import UIState
 from project.config import FPS, PICKER_BASE_SPEED
 
@@ -46,10 +47,19 @@ class Slider:
         self.update_handle_pos()
 
     def draw(self, surface, font_obj):
-        lbl = font_obj.render(f"{self.label}: {int(self.val) if self.val == int(self.val) else round(self.val,1)}", True, (200,200,200))
+        lbl = font_obj.render(f"{self.label}: {int(self.val) if self.val == int(self.val) else round(self.val,1)}", True, TEXT_PRIMARY)
         surface.blit(lbl, (self.rect.x, self.rect.y - 18))
-        pygame.draw.rect(surface, (180,190,200), self.rect, border_radius=4)
-        pygame.draw.circle(surface, (142,68,173), (self.handle_x, self.rect.y + 5), self.handle_radius)
+        # Draw thin background track
+        track_rect = pygame.Rect(self.rect.x, self.rect.y + 3, self.rect.width, 4)
+        pygame.draw.rect(surface, SLIDER_TRACK, track_rect, border_radius=2)
+        # Draw filled track (left of handle)
+        filled_width = self.handle_x - self.rect.x
+        if filled_width > 0:
+            filled_rect = pygame.Rect(self.rect.x, self.rect.y + 3, filled_width, 4)
+            pygame.draw.rect(surface, SLIDER_FILL, filled_rect, border_radius=2)
+        # Draw handle
+        pygame.gfxdraw.aacircle(surface, self.handle_x, self.rect.y + 5, self.handle_radius, SLIDER_FILL)
+        pygame.gfxdraw.filled_circle(surface, self.handle_x, self.rect.y + 5, self.handle_radius, SLIDER_FILL)
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
@@ -103,13 +113,15 @@ def run_ui():
     clock = pygame.time.Clock()
 
     # --- Manual-mode sliders (position/layout updated each frame) ---
-    slider_width = max(140, int(renderer.sidebar_width - 40))
-    sx = max(20, renderer.screen.get_width() - renderer.sidebar_width + 20)
-    sy = renderer.padding + 50
-    slider_order_size = Slider(sx, sy, slider_width, 2, 11, 4, "Basket Order Size (SKUs)")
-    slider_speed = Slider(sx, sy + 60, slider_width, 0.5, 4.0, 1.0, "Picker Speed Factor")
-    slider_surge_freq = Slider(sx, sy + 120, slider_width, 5, 60, 20, "Demand Surge Timer (s)")
-    slider_hot_intensity = Slider(sx, sy + 180, slider_width, 1, 40, 8, "Surge Intensity")
+    grid_pixel_width = layout.cols * renderer.tile_size
+    right_x = renderer.grid_offset_x + grid_pixel_width + renderer.padding
+    slider_width = int(renderer.sidebar_width - 40)
+    sx = right_x + 20
+    card1_y = renderer.padding
+    slider_order_size = Slider(sx, card1_y + 50, slider_width, 2, 11, 4, "Basket Order Size (SKUs)")
+    slider_speed = Slider(sx, card1_y + 88, slider_width, 0.5, 4.0, 1.0, "Picker Speed Factor")
+    slider_surge_freq = Slider(sx, card1_y + 126, slider_width, 5, 60, 20, "Demand Surge Timer (s)")
+    slider_hot_intensity = Slider(sx, card1_y + 164, slider_width, 1, 40, 8, "Surge Intensity")
     sliders = [slider_order_size, slider_speed, slider_surge_freq, slider_hot_intensity]
     last_surge_time = time.time()
     ui_state.sliders = sliders
@@ -150,11 +162,13 @@ def run_ui():
         grid_offset_x = renderer.grid_offset_x
         grid_offset_y = renderer.grid_offset_y
         # Update slider geometry to stick inside right sidebar
-        slider_width = max(140, int(renderer.sidebar_width - 40))
-        sx = max(renderer.screen.get_width() - renderer.sidebar_width + renderer.padding + 10, renderer.screen.get_width() - slider_width - 20)
-        sy = renderer.padding + 40
+        grid_pixel_width = layout.cols * renderer.tile_size
+        right_x = renderer.grid_offset_x + grid_pixel_width + renderer.padding
+        slider_width = int(renderer.sidebar_width - 40)
+        sx = right_x + 20
+        card1_y = renderer.padding
         for i, s in enumerate(sliders):
-            s.set_rect(sx, sy + i * int(48 * renderer.scale), slider_width)
+            s.set_rect(sx, card1_y + 50 + i * 38, slider_width)
         ui_state.sliders = sliders
         
         # Determine Hovered Cell

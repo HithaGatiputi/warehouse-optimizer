@@ -2,6 +2,7 @@
 Advanced Pygame renderer for Dark Store UI with interactive elements.
 """
 import pygame
+import pygame.gfxdraw
 import numpy as np
 from project.warehouse.layout import WarehouseLayout
 from project.warehouse.inventory import InventoryManager, SKUInfo
@@ -20,19 +21,21 @@ from project.visualization.colors import (
     BG_PRIMARY, BG_SECONDARY, CELL_AISLE_COLOR, CELL_SHELF_COLOR, CELL_SHELF_BORDER,
     CELL_PACKING_COLOR, CELL_DISPATCH_COLOR, GRID_LINE_COLOR,
     TEXT_PRIMARY, TEXT_SECONDARY, TEXT_HEADER, ITEM_IN_ORDER,
-    ITEM_CLASS_A, ITEM_CLASS_B, ITEM_CLASS_C, HEATMAP_GRADIENT
+    ITEM_CLASS_A, ITEM_CLASS_B, ITEM_CLASS_C, HEATMAP_GRADIENT,
+    DIVIDER, ITEM_DEFAULT
 )
 
 class Renderer:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((500,500), pygame.RESIZABLE)
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("Quick-Commerce Dark Store Operations Platform")
         self.base_tile_size = TILE_SIZE
         self.base_left_panel_width = LEFT_PANEL_WIDTH
         self.base_sidebar_width = SIDEBAR_WIDTH
         self.base_padding = PADDING
         self.scale = 1.0
+        self.ui_scale = 1.0
         self.tile_size = TILE_SIZE
         self.left_panel_width = LEFT_PANEL_WIDTH
         self.sidebar_width = SIDEBAR_WIDTH
@@ -44,15 +47,36 @@ class Renderer:
         self.show_heatmap = True
         
     def _rebuild_fonts(self):
-        tiny_size = max(9, int(11 * self.scale))
-        small_size = max(10, int(12 * self.scale))
-        normal_size = max(12, int(14 * self.scale))
-        large_size = max(14, int(18 * self.scale))
-        self.font_tiny = pygame.font.SysFont("Arial", tiny_size)
-        self.font_small = pygame.font.SysFont("Arial", small_size)
-        self.font = pygame.font.SysFont("Arial", normal_size)
-        self.font_large = pygame.font.SysFont("Arial", large_size, bold=True)
-        self.line_height = max(18, int(18 * self.scale))
+        tiny_size = max(9, int(11 * self.ui_scale))
+        small_size = max(10, int(12 * self.ui_scale))
+        normal_size = max(12, int(14 * self.ui_scale))
+        large_size = max(14, int(18 * self.ui_scale))
+        
+        import os
+        font_dir = os.path.join("project", "assets", "fonts")
+        
+        try:
+            self.font_heading = pygame.font.Font(os.path.join(font_dir, "Inter-SemiBold.ttf"), large_size)
+            self.font_subheading = pygame.font.Font(os.path.join(font_dir, "Inter-SemiBold.ttf"), normal_size)
+            self.font_label = pygame.font.Font(os.path.join(font_dir, "Inter-Medium.ttf"), normal_size)
+            self.font_bold = pygame.font.Font(os.path.join(font_dir, "Inter-Bold.ttf"), normal_size)
+            self.font_regular = pygame.font.Font(os.path.join(font_dir, "Inter-Regular.ttf"), normal_size)
+            self.font_tiny = pygame.font.Font(os.path.join(font_dir, "Inter-Regular.ttf"), tiny_size)
+            self.font_small = pygame.font.Font(os.path.join(font_dir, "Inter-Regular.ttf"), small_size)
+        except Exception as e:
+            print(f"Error loading custom Inter fonts: {e}. Falling back to Arial.")
+            self.font_heading = pygame.font.SysFont("Arial", large_size, bold=True)
+            self.font_subheading = pygame.font.SysFont("Arial", normal_size, bold=True)
+            self.font_label = pygame.font.SysFont("Arial", normal_size, bold=False)
+            self.font_bold = pygame.font.SysFont("Arial", normal_size, bold=True)
+            self.font_regular = pygame.font.SysFont("Arial", normal_size)
+            self.font_tiny = pygame.font.SysFont("Arial", tiny_size)
+            self.font_small = pygame.font.SysFont("Arial", small_size)
+
+        # Fallbacks for legacy/base code references:
+        self.font = self.font_regular
+        self.font_large = self.font_heading
+        self.line_height = max(18, int(18 * self.ui_scale))
 
     def _update_layout(self, layout: WarehouseLayout, win_w: int, win_h: int):
         min_tile = 16
@@ -66,13 +90,14 @@ class Renderer:
         if available_width <= 0 or available_height <= 0:
             self.scale = 0.5
         else:
-            self.scale = min(1.0, available_width / target_grid_width, available_height / target_grid_height)
+            self.scale = min(2.5, available_width / target_grid_width, available_height / target_grid_height)
             self.scale = max(0.45, self.scale)
 
+        self.ui_scale = min(1.0, self.scale)
         self.tile_size = max(min_tile, int(self.base_tile_size * self.scale))
-        self.left_panel_width = max(min_side, int(self.base_left_panel_width * self.scale))
-        self.sidebar_width = max(min_sidebar, int(self.base_sidebar_width * self.scale))
-        self.padding = max(8, int(self.base_padding * self.scale))
+        self.left_panel_width = max(min_side, int(self.base_left_panel_width * self.ui_scale))
+        self.sidebar_width = max(min_sidebar, int(self.base_sidebar_width * self.ui_scale))
+        self.padding = max(8, int(self.base_padding * self.ui_scale))
         self.grid_offset_x = self.padding + self.left_panel_width + self.padding
         self.grid_offset_y = self.padding
         self._rebuild_fonts()
@@ -87,8 +112,28 @@ class Renderer:
         pygame.draw.rect(self.screen, BG_SECONDARY, rect, border_radius=8)
         title_surf = self.font_large.render(title, True, TEXT_HEADER)
         self.screen.blit(title_surf, (rect.x + 15, rect.y + 15))
-        pygame.draw.line(self.screen, (60, 60, 75), (rect.x + 15, rect.y + 40), (rect.right - 15, rect.y + 40), 1)
+        pygame.draw.line(self.screen, DIVIDER, (rect.x + 15, rect.y + 40), (rect.right - 15, rect.y + 40), 1)
         return rect.x + 15, rect.y + 50
+
+    def _draw_card(self, rect: pygame.Rect, title: str, has_icon=False):
+        pygame.draw.rect(self.screen, BG_SECONDARY, rect, border_radius=8)
+        pygame.draw.rect(self.screen, DIVIDER, rect, width=1, border_radius=8)
+        
+        tx = rect.x + 15
+        if has_icon and title:
+            ix = rect.x + 15
+            iy = rect.y + 12
+            # Draw line graph trend icon
+            points = [(ix, iy + 10), (ix + 4, iy + 7), (ix + 8, iy + 11), (ix + 14, iy + 2)]
+            pygame.draw.lines(self.screen, (108, 92, 231), False, points, 2)
+            for px, py in points:
+                pygame.draw.circle(self.screen, (108, 92, 231), (px, py), 2)
+            tx += 20
+            
+        if title:
+            title_surf = self.font_subheading.render(title, True, TEXT_HEADER)
+            self.screen.blit(title_surf, (tx, rect.y + 10))
+        return rect.x + 15, rect.y + 35
         
     def render(self, layout: WarehouseLayout, inventory: InventoryManager, pickers: list[Picker], 
                metrics: dict, order_manager: OrderManager, congestion: CongestionManager, 
@@ -171,8 +216,10 @@ class Renderer:
 
             # Draw fading trails
             if len(picker.trail) > 1:
-                for i, (tx, ty) in enumerate(picker.trail):
+                for i, (tgx, tgy) in enumerate(picker.trail):
                     if i % 3 == 0:
+                        tx = tgx * self.tile_size + grid_offset_x + self.tile_size // 2
+                        ty = tgy * self.tile_size + grid_offset_y + self.tile_size // 2
                         rad = max(1, int(6 * (i / len(picker.trail))))
                         pygame.draw.circle(self.screen, picker.color, (int(tx), int(ty)), rad)
 
@@ -189,13 +236,17 @@ class Renderer:
             left_rect = pygame.Rect(self.padding, self.padding, self.left_panel_width, self.screen.get_height() - self.padding * 2)
             lx, ly = self._draw_panel(left_rect, "Cart Builder & Catalog")
             
+            btn_height = max(28, int(26 * self.ui_scale))
+            total_height = left_rect.bottom - btn_height - 20 - ly
+            list_height = (total_height - (2 * self.line_height + 30)) // 2
+
             # Catalog list
-            catalog_surf = self.font.render("Available Products:", True, TEXT_HEADER)
+            catalog_surf = self.font_subheading.render("Available Products:", True, TEXT_HEADER)
             self.screen.blit(catalog_surf, (lx, ly))
             ly += self.line_height + 5
             
             # Setup a clipping rect for scrollable area
-            clip_rect = pygame.Rect(lx, ly, self.left_panel_width - 20, int(220 * self.scale))
+            clip_rect = pygame.Rect(lx, ly, self.left_panel_width - 20, list_height)
             self.screen.set_clip(clip_rect)
             
             ui_state.catalog_rects.clear()
@@ -210,10 +261,10 @@ class Renderer:
                     seen_names.add(s.product_name)
             
             for sku in unique_skus:
-                item_rect = pygame.Rect(lx, ly - scroll_offset, self.left_panel_width - 30, max(18, int(18 * self.scale)))
+                item_rect = pygame.Rect(lx, ly - scroll_offset, self.left_panel_width - 30, max(18, int(18 * self.ui_scale)))
                 
                 if item_rect.bottom > clip_rect.top and item_rect.top < clip_rect.bottom:
-                    pygame.draw.rect(self.screen, (50, 50, 60), item_rect, border_radius=4)
+                    pygame.draw.rect(self.screen, BG_PRIMARY, item_rect, border_radius=4)
                     cat_color = ITEM_CLASS_A if sku.abc_class == "A" else ITEM_CLASS_B if sku.abc_class == "B" else ITEM_CLASS_C
                     pygame.draw.circle(self.screen, cat_color, (lx + 10, item_rect.centery), 4)
                     
@@ -225,114 +276,313 @@ class Renderer:
                 ly += 24
                 
             self.screen.set_clip(None)
-            ly = clip_rect.bottom + int(15 * self.scale)
+            ly = clip_rect.bottom + 10
             
             # Custom Cart
-            pygame.draw.line(self.screen, (60, 60, 75), (lx, ly), (left_rect.right - 15, ly), 1)
-            ly += 15
-            cart_surf = self.font.render(f"Current Cart ({len(ui_state.custom_cart)} items):", True, TEXT_HEADER)
+            pygame.draw.line(self.screen, DIVIDER, (lx, ly), (left_rect.right - 15, ly), 1)
+            ly += 10
+            cart_surf = self.font_subheading.render(f"Current Cart ({len(ui_state.custom_cart)} items):", True, TEXT_HEADER)
             self.screen.blit(cart_surf, (lx, ly))
             ly += self.line_height + 5
             
-            for item in ui_state.custom_cart[-10:]:
+            cart_clip_rect = pygame.Rect(lx, ly, self.left_panel_width - 20, list_height)
+            self.screen.set_clip(cart_clip_rect)
+            
+            cy = ly
+            for item in ui_state.custom_cart:
                 surf = self.font_small.render(f"- {item.product_name}", True, TEXT_SECONDARY)
-                self.screen.blit(surf, (lx + 10, ly))
-                ly += max(16, int(16 * self.scale))
+                self.screen.blit(surf, (lx + 10, cy))
+                cy += max(16, int(16 * self.ui_scale))
+                
+            self.screen.set_clip(None)
                 
             # Buttons
-            btn_height = max(28, int(26 * self.scale))
-            btn_width = max(100, int(100 * self.scale))
+            btn_height = max(28, int(26 * self.ui_scale))
+            btn_width = max(100, int(100 * self.ui_scale))
             submit_rect = pygame.Rect(lx, left_rect.bottom - btn_height - 10, btn_width, btn_height)
-            pygame.draw.rect(self.screen, (46, 204, 113), submit_rect, border_radius=4)
-            sub_text = self.font.render("Submit Order", True, (0, 0, 0))
+            pygame.draw.rect(self.screen, ITEM_CLASS_A, submit_rect, border_radius=4)
+            sub_text = self.font.render("Submit Order", True, (255, 255, 255))
             self.screen.blit(sub_text, (submit_rect.x + 10, submit_rect.y + (btn_height - self.font.get_height()) // 2))
             ui_state.submit_rect = submit_rect
             
-            clear_rect = pygame.Rect(submit_rect.right + max(10, int(10 * self.scale)), submit_rect.y, max(80, int(80 * self.scale)), btn_height)
-            pygame.draw.rect(self.screen, (231, 76, 60), clear_rect, border_radius=4)
+            clear_rect = pygame.Rect(submit_rect.right + max(10, int(10 * self.ui_scale)), submit_rect.y, max(80, int(80 * self.ui_scale)), btn_height)
+            pygame.draw.rect(self.screen, ITEM_DEFAULT, clear_rect, border_radius=4)
             clr_text = self.font.render("Clear", True, (255, 255, 255))
             self.screen.blit(clr_text, (clear_rect.x + (clear_rect.width - clr_text.get_width()) // 2, clear_rect.y + (btn_height - clr_text.get_height()) // 2))
             ui_state.clear_rect = clear_rect
 
-        # 5. RIGHT PANEL: Dark Store Operations Dashboard
+        # 5. RIGHT PANEL: Dark Store Operations Dashboard (Card-based layout)
+        import math
         grid_pixel_width = layout.cols * self.tile_size
         right_x = grid_offset_x + grid_pixel_width + self.padding
-        right_rect = pygame.Rect(right_x, self.padding, self.sidebar_width, self.screen.get_height() - self.padding * 2)
-        rx, ry = self._draw_panel(right_rect, "Operations Dashboard")
         
-        footer_top = right_rect.bottom - max(90, int(80 * self.scale))
-        def draw_text(text, color, bold=False, allow_overflow=False):
-            nonlocal ry
-            if ry + self.line_height > footer_top and not allow_overflow:
-                return False
-            f = self.font_large if bold else self.font
-            surf = f.render(text, True, color)
-            self.screen.blit(surf, (rx, ry))
-            ry += self.line_height
-            return True
+        # Calculate dynamic gap between cards based on available height and heights of cards
+        available_height = self.screen.get_height() - self.padding * 2
+        
+        # Base heights
+        h_sliders_base = 240 if not demo_mode else 70
+        h_stats_base = 115
+        h_kpis_base = 105
+        
+        orders_to_show = order_manager.active_orders[:2] + order_manager.pending_orders[:2]
+        if not orders_to_show:
+            h_orders_base = 55
+        else:
+            h_orders_base = 42 + len(orders_to_show[:3]) * 15
+            
+        h_fleet_base = 80
+        h_opt_base = 65
+        h_controls_base = 80
+        
+        sum_base = h_sliders_base + h_stats_base + h_kpis_base + h_orders_base + h_fleet_base + h_opt_base + h_controls_base
+        
+        # Responsive scaling factor k and card gap
+        if available_height > sum_base + 60: # 60px is 6 gaps of 10px
+            card_gap = 10
+            k = (available_height - 60) / sum_base
+            k = min(1.5, k) # Cap to avoid oversized text spacing
+        else:
+            k = 1.0
+            card_gap = max(4, (available_height - sum_base) // 6)
+            
+        # Compute scaled heights
+        h_sliders = int(h_sliders_base * k)
+        h_stats = int(h_stats_base * k)
+        h_kpis = int(h_kpis_base * k)
+        h_orders = int(h_orders_base * k)
+        h_fleet = int(h_fleet_base * k)
+        h_opt = int(h_opt_base * k)
+        h_controls = int(h_controls_base * k)
+        
+        ry = self.padding
 
-        draw_text(f"Mode: {'DEMO PRESENTATION' if demo_mode else 'MANUAL'} | Time: {order_manager.time_of_day}", (46, 204, 113) if demo_mode else TEXT_SECONDARY)
-        ry += max(8, int(8 * self.scale))
+        # --- Card 1: Sliders ---
+        card1_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_sliders)
+        cx, cy = self._draw_card(card1_rect, "Operations Dashboard", has_icon=True)
         
-        # Warehouse Stats
+        if not demo_mode:
+            # Draw divider line above footer
+            pygame.draw.line(self.screen, DIVIDER, 
+                             (card1_rect.x + 15, card1_rect.bottom - int(28 * k)), 
+                             (card1_rect.right - 15, card1_rect.bottom - int(28 * k)), 1)
+            
+            mode_y = card1_rect.bottom - int(22 * k)
+            mode_text = f"Mode: {'DEMO PRESENTATION' if demo_mode else 'MANUAL'}  |  Time: {order_manager.time_of_day}"
+            mode_color = (39, 174, 96) if demo_mode else TEXT_SECONDARY
+            mode_surf = self.font_regular.render(mode_text, True, mode_color)
+            self.screen.blit(mode_surf, (cx, mode_y))
+            
+            # Draw weather/sun icon based on time of day
+            tod = order_manager.time_of_day.lower()
+            sx = card1_rect.right - 25
+            sy = mode_y + mode_surf.get_height() // 2
+            if "morning" in tod or "afternoon" in tod:
+                pygame.draw.circle(self.screen, (243, 156, 18), (sx, sy), 5, width=2)
+                for angle in range(0, 360, 45):
+                    rad = math.radians(angle)
+                    pygame.draw.line(self.screen, (243, 156, 18), 
+                                     (sx + 7 * math.cos(rad), sy + 7 * math.sin(rad)), 
+                                     (sx + 10 * math.cos(rad), sy + 10 * math.sin(rad)), 2)
+            else:
+                pygame.draw.circle(self.screen, (127, 140, 141), (sx, sy), 5, width=2)
+                pygame.draw.circle(self.screen, BG_SECONDARY, (sx - 2, sy - 2), 5)
+        else:
+            mode_y = card1_rect.y + int(35 * k)
+            mode_text = "Mode: DEMO PRESENTATION"
+            mode_surf = self.font_regular.render(mode_text, True, (39, 174, 96))
+            self.screen.blit(mode_surf, (cx, mode_y))
+
+        ry += h_sliders + card_gap
+
+        # --- Card 2: Warehouse Stats ---
+        card2_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_stats)
+        cx, cy = self._draw_card(card2_rect, "Warehouse Stats")
+        
+        col1_x = cx
+        col2_x = right_x + self.sidebar_width // 2 + 10
+        
         num_skus = len(inventory.get_all_skus())
         num_shelves = len(layout.get_shelf_cells())
         utilization = (num_skus / num_shelves * 100) if num_shelves > 0 else 0
         unique_catalog = len(set([s.product_name for s in inventory.get_all_skus()]))
         
-        draw_text("Warehouse Stats", TEXT_HEADER, True)
-        draw_text(f"Shelf Utilization: {utilization:.1f}%", TEXT_PRIMARY)
-        draw_text(f"Catalog Size: {unique_catalog} distinct products", TEXT_PRIMARY)
-        draw_text(f"Total Physical Units: {num_skus}", TEXT_PRIMARY)
-        draw_text(f"Active Pickers: {sum(1 for p in pickers if p.state != PickerState.IDLE)}/{len(pickers)}", TEXT_PRIMARY)
-        ry += 10
+        # Row 1, Column 1: Shelf Utilization
+        lbl = self.font_label.render("Shelf Utilization", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col1_x, card2_rect.y + int(30 * k)))
+        val = self.font_bold.render(f"{utilization:.1f}%", True, (41, 128, 185))
+        self.screen.blit(val, (col1_x, card2_rect.y + int(46 * k)))
         
-        # KPIs
+        # Row 1, Column 2: Catalog Size
+        lbl = self.font_label.render("Catalog Size", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col2_x, card2_rect.y + int(30 * k)))
+        val = self.font_bold.render(str(unique_catalog), True, TEXT_PRIMARY)
+        self.screen.blit(val, (col2_x, card2_rect.y + int(46 * k)))
+        sfx = self.font_small.render("distinct products", True, TEXT_SECONDARY)
+        self.screen.blit(sfx, (col2_x, card2_rect.y + int(62 * k)))
+        
+        # Row 2, Column 1: Total Physical Units
+        lbl = self.font_label.render("Total Physical Units", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col1_x, card2_rect.y + int(78 * k)))
+        val = self.font_bold.render(str(num_skus), True, TEXT_PRIMARY)
+        self.screen.blit(val, (col1_x, card2_rect.y + int(94 * k)))
+        
+        # Row 2, Column 2: Active Pickers
+        lbl = self.font_label.render("Active Pickers", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col2_x, card2_rect.y + int(78 * k)))
+        active_pickers = sum(1 for p in pickers if p.state != PickerState.IDLE)
+        val = self.font_bold.render(f"{active_pickers}/{len(pickers)}", True, TEXT_PRIMARY)
+        self.screen.blit(val, (col2_x, card2_rect.y + int(94 * k)))
+
+        ry += h_stats + card_gap
+
+        # --- Card 3: Live KPIs ---
+        card3_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_kpis)
+        cx, cy = self._draw_card(card3_rect, "Live KPIs")
+        
         om_metrics = order_manager.get_metrics()
-        draw_text("Live KPIs", TEXT_HEADER, True)
-        draw_text(f"Queue Size: {om_metrics['pending']}", TEXT_PRIMARY)
-        draw_text(f"Completed Orders: {om_metrics['completed']}", TEXT_PRIMARY)
-        draw_text(f"Avg Fulfillment: {om_metrics['avg_fulfillment_time']:.1f} ticks", TEXT_PRIMARY)
-        
         acc = forecaster.get_average_accuracy()
-        acc_color = (46, 204, 113) if acc > 80 else (241, 196, 15) if acc > 50 else (231, 76, 60)
-        draw_text(f"Forecast Accuracy: {acc:.1f}%", acc_color)
-        ry += 10
-
-        # Orders Queue
-        draw_text("Order Management", TEXT_HEADER, True)
-        for order in order_manager.active_orders[:3]:
-            items_str = ", ".join([item.product_name for item in order.items[:3]])
-            draw_text(f"#{order.order_id} [Picking by P{order.picker_id}]: {items_str}", (52, 152, 219)) # Blue
-            
-        for order in order_manager.pending_orders[:4]:
-            items_str = ", ".join([item.product_name for item in order.items[:3]])
-            draw_text(f"#{order.order_id} [Pending]: {items_str}", (241, 196, 15)) # Yellow
-            
-        if not order_manager.active_orders and not order_manager.pending_orders:
-            draw_text("Queue is empty.", TEXT_SECONDARY)
-        ry += 10
-
-        # Pickers
-        draw_text("Picker Fleet", TEXT_HEADER, True)
-        for picker in pickers:
-            status = "Idle"
-            if picker.state == PickerState.PICKING: status = f"Picking #{picker.active_order.order_id}"
-            elif picker.state == PickerState.RETURNING: status = "Returning"
-            draw_text(f"Picker {picker.id}: {status} | Util: {picker.get_utilization()*100:.1f}%", picker.color)
-        ry += 10
-
-        # Optimization Status
-        draw_text("Warehouse Opt.", TEXT_HEADER, True)
-        draw_text(f"Active Strategy: {metrics.get('strategy', 'Greedy')}", TEXT_PRIMARY)
-        draw_text(f"Storage Dist: {metrics.get('avg_storage_distance', 0.0):.1f} steps", TEXT_PRIMARY)
+        acc_color = (39, 174, 96) if acc > 80 else (241, 196, 15) if acc > 50 else (211, 47, 47)
         
-        # Controls footer
-        ry = right_rect.bottom - max(90, int(80 * self.scale))
-        draw_text("Controls", TEXT_HEADER, True, allow_overflow=True)
-        draw_text("[D] Demo Mode | [SPACE] Random Orders", TEXT_SECONDARY, allow_overflow=True)
-        draw_text("[S] Change Strategy | [O] Re-slot", TEXT_SECONDARY, allow_overflow=True)
-        draw_text("[H] Toggle Heatmap | [T] Cycle Time of Day", TEXT_SECONDARY, allow_overflow=True)
+        # Row 1, Column 1: Queue Size
+        lbl = self.font_label.render("Queue Size", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col1_x, card3_rect.y + int(30 * k)))
+        val = self.font_bold.render(str(om_metrics['pending']), True, TEXT_PRIMARY)
+        self.screen.blit(val, (col1_x, card3_rect.y + int(44 * k)))
+        
+        # Row 1, Column 2: Completed Orders
+        lbl = self.font_label.render("Completed Orders", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col2_x, card3_rect.y + int(30 * k)))
+        val = self.font_bold.render(str(om_metrics['completed']), True, TEXT_PRIMARY)
+        self.screen.blit(val, (col2_x, card3_rect.y + int(44 * k)))
+        
+        # Row 2, Column 1: Avg Fulfillment
+        lbl = self.font_label.render("Avg Fulfillment", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col1_x, card3_rect.y + int(60 * k)))
+        val_surf = self.font_bold.render(f"{om_metrics['avg_fulfillment_time']:.1f}", True, TEXT_PRIMARY)
+        self.screen.blit(val_surf, (col1_x, card3_rect.y + int(74 * k)))
+        sfx_surf = self.font_regular.render(" ticks", True, TEXT_SECONDARY)
+        self.screen.blit(sfx_surf, (col1_x + val_surf.get_width(), card3_rect.y + int(74 * k) + (val_surf.get_height() - sfx_surf.get_height()) // 2))
+        
+        # Row 2, Column 2: Forecast Accuracy
+        lbl = self.font_label.render("Forecast Accuracy", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col2_x, card3_rect.y + int(60 * k)))
+        val = self.font_bold.render(f"{acc:.1f}%", True, acc_color)
+        self.screen.blit(val, (col2_x, card3_rect.y + int(74 * k)))
+
+        ry += h_kpis + card_gap
+
+        # --- Card 4: Order Management ---
+        card4_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_orders)
+        cx, cy = self._draw_card(card4_rect, "Order Management")
+        
+        if not orders_to_show:
+            empty_surf = self.font_regular.render("Queue is empty.", True, TEXT_SECONDARY)
+            self.screen.blit(empty_surf, (cx, card4_rect.y + int(32 * k)))
+        else:
+            for idx, order in enumerate(orders_to_show[:3]):
+                items_str = ", ".join([item.product_name for item in order.items[:2]])
+                if len(order.items) > 2:
+                    items_str += "..."
+                if order.picker_id:
+                    text = f"#{order.order_id} [P{order.picker_id}]: {items_str}"
+                    color = (41, 128, 185)
+                else:
+                    text = f"#{order.order_id} [Pending]: {items_str}"
+                    color = (243, 156, 18)
+                order_surf = self.font_small.render(text, True, color)
+                self.screen.blit(order_surf, (cx, card4_rect.y + int(32 * k) + idx * int(14 * k)))
+
+        ry += h_orders + card_gap
+
+        # --- Card 5: Picker Status List (No Header) ---
+        card5_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_fleet)
+        pygame.draw.rect(self.screen, BG_SECONDARY, card5_rect, border_radius=8)
+        pygame.draw.rect(self.screen, DIVIDER, card5_rect, width=1, border_radius=8)
+        
+        # Vertical divider line in the middle
+        pygame.draw.line(self.screen, DIVIDER, 
+                         (card5_rect.x + self.sidebar_width // 2, card5_rect.y + int(8 * k)), 
+                         (card5_rect.x + self.sidebar_width // 2, card5_rect.bottom - int(8 * k)), 1)
+        
+        col_width = self.sidebar_width // 2
+        for idx, picker in enumerate(pickers[:8]):
+            col = idx // 4
+            row = idx % 4
+            px = card5_rect.x + 12 + col * col_width
+            py = card5_rect.y + int(8 * k) + row * int(15 * k)
+            
+            # Colored circle dot (radius 4, anti-aliased)
+            pygame.gfxdraw.aacircle(self.screen, px + 5, py + 7, 4, picker.color)
+            pygame.gfxdraw.filled_circle(self.screen, px + 5, py + 7, 4, picker.color)
+            
+            status = "Idle"
+            if picker.state == PickerState.PICKING: 
+                status = "Picking"
+            elif picker.state == PickerState.RETURNING: 
+                status = "Returning"
+                
+            # Render "Picker X:" in picker color
+            name_text = f"Picker {picker.id}: "
+            name_surf = self.font_small.render(name_text, True, picker.color)
+            self.screen.blit(name_surf, (px + 14, py))
+            
+            # Render status and utilization in gray
+            status_text = f"{status} | Util: {picker.get_utilization()*100:.1f}%"
+            status_surf = self.font_small.render(status_text, True, TEXT_SECONDARY)
+            self.screen.blit(status_surf, (px + 14 + name_surf.get_width(), py))
+
+        ry += h_fleet + card_gap
+
+        # --- Card 6: Warehouse Optimization ---
+        card6_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_opt)
+        cx, cy = self._draw_card(card6_rect, "Warehouse Optimization")
+        
+        strategy = metrics.get('strategy', 'Greedy')
+        dist = metrics.get('avg_storage_distance', 0.0)
+        
+        # Column 1: Active Strategy
+        strat_lbl = self.font_label.render("Active Strategy", True, TEXT_SECONDARY)
+        self.screen.blit(strat_lbl, (cx, card6_rect.y + int(26 * k)))
+        strat_val = self.font_bold.render(strategy, True, (108, 92, 231))
+        self.screen.blit(strat_val, (cx, card6_rect.y + int(40 * k)))
+        
+        # Column 2: Storage Distance
+        dist_lbl = self.font_label.render("Storage Distance", True, TEXT_SECONDARY)
+        self.screen.blit(dist_lbl, (col2_x, card6_rect.y + int(26 * k)))
+        
+        dist_val_str = f"{dist:.1f}"
+        dist_surf = self.font_bold.render(dist_val_str, True, TEXT_PRIMARY)
+        self.screen.blit(dist_surf, (col2_x, card6_rect.y + int(40 * k)))
+        
+        sfx_surf = self.font_regular.render(" steps", True, TEXT_SECONDARY)
+        self.screen.blit(sfx_surf, (col2_x + dist_surf.get_width(), card6_rect.y + int(40 * k) + (dist_surf.get_height() - sfx_surf.get_height()) // 2))
+
+        ry += h_opt + card_gap
+
+        # --- Card 7: Controls ---
+        card7_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_controls)
+        cx, cy = self._draw_card(card7_rect, "Controls")
+        
+        col1_shortcuts = [
+            "[D] Demo Mode",
+            "[S] Change Strategy",
+            "[H] Toggle Heatmap"
+        ]
+        col2_shortcuts = [
+            "[SPACE] Random Orders",
+            "[O] Re-slot",
+            "[T] Cycle Time of Day"
+        ]
+        
+        for idx, shortcut in enumerate(col1_shortcuts):
+            s_surf = self.font_small.render(shortcut, True, TEXT_SECONDARY)
+            self.screen.blit(s_surf, (cx, card7_rect.y + int(26 * k) + idx * 13))
+            
+        for idx, shortcut in enumerate(col2_shortcuts):
+            s_surf = self.font_small.render(shortcut, True, TEXT_SECONDARY)
+            self.screen.blit(s_surf, (col2_x, card7_rect.y + int(26 * k) + idx * 13))
+
+        ry += h_controls + card_gap
 
         # 6. Tooltip Overlay (Drawn last so it's on top)
         if hovered_sku_info:
@@ -342,25 +592,25 @@ class Renderer:
             pygame.draw.rect(self.screen, (80, 80, 90), tooltip_rect, width=1, border_radius=6)
             
             tx, ty = tooltip_rect.x + 10, tooltip_rect.y + 10
-            surf = self.font_large.render(hovered_sku_info.product_name, True, (255, 255, 255))
+            surf = self.font_subheading.render(hovered_sku_info.product_name, True, (255, 255, 255))
             self.screen.blit(surf, (tx, ty))
             ty += 22
-            surf = self.font.render(f"Category: {hovered_sku_info.category}", True, TEXT_SECONDARY)
+            surf = self.font_label.render(f"Category: {hovered_sku_info.category}", True, TEXT_SECONDARY)
             self.screen.blit(surf, (tx, ty))
             ty += 18
-            surf = self.font.render(f"Velocity: {int(hovered_sku_info.velocity)}", True, TEXT_SECONDARY)
+            surf = self.font_label.render(f"Velocity: {int(hovered_sku_info.velocity)}", True, TEXT_SECONDARY)
             self.screen.blit(surf, (tx, ty))
             ty += 18
             
             c_color = ITEM_CLASS_A if hovered_sku_info.abc_class == "A" else ITEM_CLASS_B if hovered_sku_info.abc_class == "B" else ITEM_CLASS_C
-            surf = self.font.render(f"Class: {hovered_sku_info.abc_class}", True, c_color)
+            surf = self.font_label.render(f"Class: {hovered_sku_info.abc_class}", True, c_color)
             self.screen.blit(surf, (tx, ty))
 
         # Render sliders when in manual mode: draw to the right sidebar area if present
         try:
             if not demo_mode and hasattr(ui_state, 'sliders') and ui_state.sliders:
                 for s in ui_state.sliders:
-                    s.draw(self.screen, self.font)
+                    s.draw(self.screen, self.font_label)
         except Exception:
             pass
 
@@ -368,9 +618,9 @@ class Renderer:
             banner_width = max(280, int(360 * self.scale))
             banner_height = max(40, int(48 * self.scale))
             banner_rect = pygame.Rect(self.screen.get_width() // 2 - banner_width // 2, self.padding * 2, banner_width, banner_height)
-            pygame.draw.rect(self.screen, (46, 204, 113), banner_rect, border_radius=10)
+            pygame.draw.rect(self.screen, ITEM_CLASS_A, banner_rect, border_radius=10)
             pygame.draw.rect(self.screen, (255, 255, 255), banner_rect, width=2, border_radius=10)
-            surf = self.font_large.render(ui_state.reslot_message, True, (0, 0, 0))
+            surf = self.font_large.render(ui_state.reslot_message, True, (255, 255, 255))
             self.screen.blit(surf, surf.get_rect(center=banner_rect.center))
 
         pygame.display.flip()
