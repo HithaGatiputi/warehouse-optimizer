@@ -4,6 +4,7 @@ Advanced Pygame renderer for Dark Store UI with interactive elements.
 import pygame
 import pygame.gfxdraw
 import numpy as np
+import math
 from project.warehouse.layout import WarehouseLayout
 from project.warehouse.inventory import InventoryManager, SKUInfo
 from project.simulation.picker import Picker, PickerState
@@ -24,6 +25,42 @@ from project.visualization.colors import (
     ITEM_CLASS_A, ITEM_CLASS_B, ITEM_CLASS_C, HEATMAP_GRADIENT,
     DIVIDER, ITEM_DEFAULT
 )
+
+def draw_dashed_line(surface, color, start_pos, end_pos, width=1, dash_length=4):
+    x1, y1 = start_pos
+    x2, y2 = end_pos
+    dl = dash_length
+    if y1 == y2:
+        for x in range(int(x1), int(x2), dl * 2):
+            pygame.draw.line(surface, color, (x, y1), (min(x + dl, x2), y1), width)
+
+def draw_tag_icon(surface, color, ix, iy):
+    pygame.draw.polygon(surface, color, [
+        (ix - 5, iy - 1), (ix - 1, iy - 5), (ix + 5, iy - 5), (ix + 5, iy + 3), (ix - 5, iy + 3)
+    ], 1)
+    pygame.draw.circle(surface, color, (ix + 2, iy - 2), 1)
+
+def draw_gauge_icon(surface, color, ix, iy):
+    pygame.draw.arc(surface, color, (ix - 6, iy - 4, 12, 12), 0, math.pi, 1)
+    pygame.draw.line(surface, color, (ix - 6, iy + 2), (ix + 6, iy + 2), 1)
+    pygame.draw.line(surface, color, (ix, iy + 2), (ix + 2, iy - 2), 1)
+
+def draw_box_icon(surface, color, ix, iy):
+    pygame.draw.polygon(surface, color, [
+        (ix, iy - 6), (ix + 5, iy - 3), (ix + 5, iy + 3), (ix, iy + 6), (ix - 5, iy + 3), (ix - 5, iy - 3)
+    ], 1)
+    pygame.draw.line(surface, color, (ix, iy - 6), (ix, iy + 6), 1)
+    pygame.draw.line(surface, color, (ix, iy), (ix + 5, iy - 3), 1)
+    pygame.draw.line(surface, color, (ix, iy), (ix - 5, iy - 3), 1)
+
+def draw_common_logo(surface, cx, cy, color, bg_color):
+    # A beautiful 3D Box (cube) representing inventory products
+    pygame.draw.polygon(surface, color, [
+        (cx, cy - 10), (cx + 9, cy - 5), (cx + 9, cy + 5), (cx, cy + 10), (cx - 9, cy + 5), (cx - 9, cy - 5)
+    ], 2)
+    pygame.draw.line(surface, color, (cx, cy - 10), (cx, cy + 10), 2)
+    pygame.draw.line(surface, color, (cx, cy), (cx + 9, cy - 5), 2)
+    pygame.draw.line(surface, color, (cx, cy), (cx - 9, cy - 5), 2)
 
 class Renderer:
     def __init__(self):
@@ -203,7 +240,7 @@ class Renderer:
 
         # 3. Draw Active Pickers
         for picker in pickers:
-            if picker.state != PickerState.IDLE and picker.active_order:
+            if picker.state == PickerState.PICKING and picker.active_order:
                 for item in picker.active_order.items:
                     if item.location:
                         r, c = item.location
@@ -211,8 +248,12 @@ class Renderer:
                         pygame.draw.rect(self.screen, ITEM_IN_ORDER, rect, 2, border_radius=2)
                     
                 if len(picker.full_path_cells) > 1:
-                    points = [(c * self.tile_size + grid_offset_x + self.tile_size // 2, r * self.tile_size + grid_offset_y + self.tile_size // 2) for r, c in picker.full_path_cells]
-                    pygame.draw.lines(self.screen, picker.color, False, points, max(2, int(4 * self.scale)))
+                    remaining_path = picker.full_path_cells[picker.path_index:]
+                    points = [(c * self.tile_size + grid_offset_x + self.tile_size // 2, r * self.tile_size + grid_offset_y + self.tile_size // 2) for r, c in remaining_path]
+                    if points:
+                        points.insert(0, (int(picker.pixel_x), int(picker.pixel_y)))
+                    if len(points) > 1:
+                        pygame.draw.lines(self.screen, picker.color, False, points, max(2, int(4 * self.scale)))
 
             # Draw fading trails
             if len(picker.trail) > 1:
@@ -587,24 +628,114 @@ class Renderer:
         # 6. Tooltip Overlay (Drawn last so it's on top)
         if hovered_sku_info:
             mx, my = ui_state.mouse_pos
-            tooltip_rect = pygame.Rect(mx + 15, my + 15, 160, 90)
-            pygame.draw.rect(self.screen, (30, 30, 35), tooltip_rect, border_radius=6)
-            pygame.draw.rect(self.screen, (80, 80, 90), tooltip_rect, width=1, border_radius=6)
+            tooltip_w = 240
+            tooltip_h = 110
             
-            tx, ty = tooltip_rect.x + 10, tooltip_rect.y + 10
-            surf = self.font_subheading.render(hovered_sku_info.product_name, True, (255, 255, 255))
-            self.screen.blit(surf, (tx, ty))
-            ty += 22
-            surf = self.font_label.render(f"Category: {hovered_sku_info.category}", True, TEXT_SECONDARY)
-            self.screen.blit(surf, (tx, ty))
-            ty += 18
-            surf = self.font_label.render(f"Velocity: {int(hovered_sku_info.velocity)}", True, TEXT_SECONDARY)
-            self.screen.blit(surf, (tx, ty))
-            ty += 18
+            tx = mx + 16
+            ty = my - 20
+            tail_side = "left"
             
-            c_color = ITEM_CLASS_A if hovered_sku_info.abc_class == "A" else ITEM_CLASS_B if hovered_sku_info.abc_class == "B" else ITEM_CLASS_C
-            surf = self.font_label.render(f"Class: {hovered_sku_info.abc_class}", True, c_color)
-            self.screen.blit(surf, (tx, ty))
+            win_w, win_h = self.screen.get_size()
+            if tx + tooltip_w > win_w - 15:
+                tx = mx - 16 - tooltip_w
+                tail_side = "right"
+                
+            if ty < 15:
+                ty = 15
+            elif ty + tooltip_h > win_h - 15:
+                ty = win_h - 15 - tooltip_h
+                
+            if tail_side == "left":
+                tail_points = [
+                    (tx, my - 8),
+                    (tx, my + 8),
+                    (tx - 12, my)
+                ]
+                tail_border_lines = [
+                    ((tx, my - 8), (tx - 12, my)),
+                    ((tx - 12, my), (tx, my + 8))
+                ]
+            else:
+                tail_points = [
+                    (tx + tooltip_w, my - 8),
+                    (tx + tooltip_w, my + 8),
+                    (tx + tooltip_w + 12, my)
+                ]
+                tail_border_lines = [
+                    ((tx + tooltip_w, my - 8), (tx + tooltip_w + 12, my)),
+                    ((tx + tooltip_w + 12, my), (tx + tooltip_w, my + 8))
+                ]
+                
+            bg_color = (255, 245, 242)
+            border_color = (255, 229, 222)
+            icon_bg_color = (255, 235, 230)
+            primary_color = (224, 90, 54)  # Terracotta orange
+            text_label_color = (90, 90, 90)
+            
+            # Draw rounded background
+            rect = pygame.Rect(tx, ty, tooltip_w, tooltip_h)
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=12)
+            
+            # Draw filled tail pointer
+            pygame.draw.polygon(self.screen, bg_color, tail_points)
+            
+            # Draw rounded border
+            pygame.draw.rect(self.screen, border_color, rect, width=1, border_radius=12)
+            
+            # Draw tail pointer border lines
+            for p_start, p_end in tail_border_lines:
+                pygame.draw.line(self.screen, border_color, p_start, p_end, 1)
+                
+            # Left Icon Box
+            ibox_x = tx + 12
+            ibox_y = ty + 12
+            ibox_w = 44
+            ibox_h = 44
+            ibox_rect = pygame.Rect(ibox_x, ibox_y, ibox_w, ibox_h)
+            pygame.draw.rect(self.screen, icon_bg_color, ibox_rect, border_radius=8)
+            
+            cx = ibox_x + ibox_w // 2
+            cy = ibox_y + ibox_h // 2
+            draw_common_logo(self.screen, cx, cy, primary_color, icon_bg_color)
+            
+            # Product Title
+            title_surf = self.font_bold.render(hovered_sku_info.product_name, True, primary_color)
+            self.screen.blit(title_surf, (tx + 68, ty + 10))
+            
+            # Divider Line
+            div_y = ty + 32
+            draw_dashed_line(self.screen, border_color, (tx + 68, div_y), (tx + tooltip_w - 12, div_y), width=1, dash_length=4)
+            
+            # Info Rows
+            row_x = tx + 68
+            row_y_start = ty + 38
+            row_spacing = 20
+            
+            # Row 1: Category
+            iy = row_y_start + 6
+            draw_tag_icon(self.screen, text_label_color, row_x + 5, iy)
+            lbl1 = self.font_small.render("Category: ", True, text_label_color)
+            self.screen.blit(lbl1, (row_x + 16, row_y_start))
+            val1 = self.font_small.render(hovered_sku_info.category, True, primary_color)
+            self.screen.blit(val1, (row_x + 16 + lbl1.get_width(), row_y_start))
+            
+            # Row 2: Velocity
+            row_y = row_y_start + row_spacing
+            iy = row_y + 6
+            draw_gauge_icon(self.screen, text_label_color, row_x + 5, iy)
+            lbl2 = self.font_small.render("Velocity: ", True, text_label_color)
+            self.screen.blit(lbl2, (row_x + 16, row_y))
+            val2 = self.font_small.render(f"{int(hovered_sku_info.velocity)}", True, primary_color)
+            self.screen.blit(val2, (row_x + 16 + lbl2.get_width(), row_y))
+            
+            # Row 3: Class
+            row_y = row_y_start + row_spacing * 2
+            iy = row_y + 6
+            draw_box_icon(self.screen, text_label_color, row_x + 5, iy)
+            lbl3 = self.font_small.render("Class: ", True, text_label_color)
+            self.screen.blit(lbl3, (row_x + 16, row_y))
+            val3 = self.font_small.render(hovered_sku_info.abc_class, True, primary_color)
+            self.screen.blit(val3, (row_x + 16 + lbl3.get_width(), row_y))
 
         # Render sliders when in manual mode: draw to the right sidebar area if present
         try:

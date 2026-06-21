@@ -33,11 +33,12 @@ class Picker:
         self.total_time = 0.0
         self.speed = PICKER_BASE_SPEED
 
-    def assign_route(self, order: Order, full_path_cells: list[tuple[int, int]]):
+    def assign_route(self, order: Order, full_path_cells: list[tuple[int, int]], picking_path_len: int = 0):
         self.active_order = order
         order.picker_id = self.id
         self.full_path_cells = full_path_cells
         self.path_index = 0
+        self.picking_path_len = picking_path_len
         
         if full_path_cells:
             self.state = PickerState.PICKING
@@ -77,6 +78,9 @@ class Picker:
         self.pixel_x = self.gx * tile_size + offset_x + tile_size // 2
         self.pixel_y = self.gy * tile_size + offset_y + tile_size // 2
         self.trail.append((self.gx, self.gy))
+
+        if self.picking_path_len > 0 and self.path_index >= self.picking_path_len:
+            self.state = PickerState.RETURNING
 
         if self.path_index >= len(self.full_path_cells):
             # Finished route

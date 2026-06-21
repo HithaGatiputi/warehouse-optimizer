@@ -76,7 +76,7 @@ class Slider:
             return True
         return False
 
-def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order_shelves: list[tuple[int, int]]) -> tuple[list[tuple[int, int]], bool, float]:
+def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order_shelves: list[tuple[int, int]]) -> tuple[list[tuple[int, int]], bool, float, int]:
     targets = [packing_station]
     for shelf in order_shelves:
         aisle = layout.get_adjacent_aisle(shelf)
@@ -87,6 +87,7 @@ def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order
     route_indices, total_dist, is_dp = plan_route(dist_matrix)
     
     full_path_cells = []
+    picking_path_len = 0
     for i in range(len(route_indices) - 1):
         start_idx = route_indices[i]
         end_idx = route_indices[i+1]
@@ -98,7 +99,10 @@ def route_order(layout: WarehouseLayout, packing_station: tuple[int, int], order
         else:
             full_path_cells.extend(path_segment)
             
-    return full_path_cells, is_dp, total_dist
+        if i < len(route_indices) - 2:
+            picking_path_len = len(full_path_cells)
+            
+    return full_path_cells, is_dp, total_dist, picking_path_len
 
 def run_ui():
     layout = WarehouseLayout()
@@ -275,7 +279,7 @@ def run_ui():
                         
                 elif event.key == pygame.K_s:
                     strategy_idx = (strategy_idx + 1) % len(strategies)
-                    metrics = slotting_engine.optimize_slotting(inventory, layout, strategies[strategy_idx], forecaster)
+                    metrics = slotting_engine.optimize_slotting(inventory, layout, strategies[strategy_idx], forecaster, force=True)
                     if metrics.get("executed"):
                         ui_state.reslot_timer = 120
                         ui_state.reslot_moved_skus = set(metrics.get("moved_skus", []))
@@ -329,8 +333,8 @@ def run_ui():
             picker = assign_nearest_available_picker(pickers, layout, packing_station)
             if picker:
                 order = order_manager.get_next_pending_order()
-                full_path_cells, _, _ = route_order(layout, packing_station, order.locations)
-                picker.assign_route(order, full_path_cells)
+                full_path_cells, _, _, picking_path_len = route_order(layout, packing_station, order.locations)
+                picker.assign_route(order, full_path_cells, picking_path_len)
                 # Assign precise target pixel logic is handled inside update now, but start pos must be correct
             else:
                 break
