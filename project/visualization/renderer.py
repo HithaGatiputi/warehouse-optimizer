@@ -95,12 +95,21 @@ class Renderer:
                 self.bg_image = pygame.image.load(bg_path)
             except Exception as e:
                 print(f"Error loading background image: {e}")
+                
+        self.empty_cart_image = None
+        empty_cart_path = "/Users/hithagatiputi/Documents/RVCE/DAA EL/DAA_EL/project/assets/images/empty_cart.png"
+        if os.path.exists(empty_cart_path):
+            try:
+                self.empty_cart_image = pygame.image.load(empty_cart_path)
+            except Exception as e:
+                print(f"Error loading empty cart image: {e}")
         
     def _rebuild_fonts(self):
-        tiny_size = max(9, int(10 * self.ui_scale))     # Slightly smaller grid labels for clean serif look
+        tiny_size = max(10, int(11 * self.ui_scale))     # Sharp sans-serif size
         small_size = max(10, int(12 * self.ui_scale))
         normal_size = max(12, int(14 * self.ui_scale))
         large_size = max(16, int(19 * self.ui_scale))   # Brandon Grotesque heading size
+        title_size = max(22, int(26 * self.ui_scale))   # Sized up for main title
         kpi_size = max(16, int(22 * self.ui_scale))     # Equalized value size (matches ForecastDriven)
         
         import os
@@ -108,12 +117,14 @@ class Renderer:
         brandon_bold = os.path.join(font_dir, "BrandonGrotesque-Bold.ttf")
         
         try:
+            self.font_title = pygame.font.Font(brandon_bold, title_size)
             self.font_heading = pygame.font.Font(brandon_bold, large_size)
             self.font_subheading = pygame.font.Font(brandon_bold, normal_size + 2)
             self.font_kpi_value = pygame.font.Font(brandon_bold, kpi_size)
             self.font_opt_value = pygame.font.Font(brandon_bold, kpi_size)
         except Exception as e:
             print(f"Error loading custom Brandon Grotesque fonts: {e}. Falling back to Arial.")
+            self.font_title = pygame.font.SysFont("Arial", title_size, bold=True)
             self.font_heading = pygame.font.SysFont("Arial", large_size, bold=True)
             self.font_subheading = pygame.font.SysFont("Arial", normal_size + 2, bold=True)
             self.font_kpi_value = pygame.font.SysFont("Arial", kpi_size, bold=True)
@@ -123,7 +134,7 @@ class Renderer:
         self.font_label = pygame.font.SysFont("charter", normal_size, bold=False)
         self.font_bold = pygame.font.SysFont("charter", normal_size, bold=True)
         self.font_regular = pygame.font.SysFont("charter", normal_size, bold=False)
-        self.font_tiny = pygame.font.SysFont("charter", tiny_size, bold=False)
+        self.font_tiny = pygame.font.SysFont("Arial", tiny_size, bold=True)
         self.font_small = pygame.font.SysFont("charter", small_size, bold=False)
         self.font_slider = pygame.font.SysFont("charter", max(13, int(15 * self.ui_scale)), bold=True)
 
@@ -136,10 +147,11 @@ class Renderer:
         min_tile = 16
         min_side = 180
         min_sidebar = 240
+        header_height = 55
         target_grid_width = layout.cols * self.base_tile_size
         target_grid_height = layout.rows * self.base_tile_size
         available_width = win_w - (self.base_padding * 4 + self.base_left_panel_width + self.base_sidebar_width)
-        available_height = win_h - self.base_padding * 2
+        available_height = win_h - self.base_padding * 2 - header_height
 
         if available_width <= 0 or available_height <= 0:
             self.scale = 0.5
@@ -152,6 +164,9 @@ class Renderer:
         self.left_panel_width = max(min_side, int(self.base_left_panel_width * self.ui_scale))
         self.sidebar_width = max(min_sidebar, int(self.base_sidebar_width * self.ui_scale))
         self.padding = max(8, int(self.base_padding * self.ui_scale))
+        
+        header_h = int(header_height * self.ui_scale)
+        
         # Dynamically distribute remaining horizontal space as equal gaps
         grid_w = layout.cols * self.tile_size
         card_pad = 12
@@ -163,7 +178,7 @@ class Renderer:
         gap = max(self.padding, remaining_w // 2) if remaining_w > 0 else self.padding
         
         self.grid_offset_x = self.padding + w_left + gap + card_pad
-        self.grid_offset_y = self.padding + 12
+        self.grid_offset_y = self.padding + 12 + header_h
         self.right_x = self.padding + w_left + gap + w_middle + gap
         self._rebuild_fonts()
         if self.bg_image:
@@ -215,6 +230,37 @@ class Renderer:
         self.screen.fill(BG_PRIMARY)
         if self.bg_scaled:
             self.screen.blit(self.bg_scaled, (0, 0))
+            
+        # Draw Top Header Bar
+        header_h = int(55 * self.ui_scale)
+        
+        # Draw 3D Box logo (purple)
+        logo_cx = self.padding + 15
+        logo_cy = self.padding + header_h // 2
+        draw_common_logo(self.screen, logo_cx, logo_cy, (108, 92, 231), BG_PRIMARY)
+        
+        # Render Title: "Warehouse Optimizer"
+        title_surf = self.font_title.render("Warehouse Optimizer", True, TEXT_HEADER)
+        self.screen.blit(title_surf, (self.padding + 38, self.padding + (header_h - title_surf.get_height()) // 2))
+        
+        # Render "Operations Dashboard" with tiny trend icon on the right
+        dash_surf = self.font_bold.render("Operations Dashboard", True, TEXT_PRIMARY)
+        dash_w = dash_surf.get_width()
+        
+        # Trend Graph Icon
+        ix = self.screen.get_width() - self.padding - dash_w - 20
+        iy = self.padding + header_h // 2
+        points = [(ix - 8, iy + 4), (ix - 4, iy + 1), (ix, iy + 5), (ix + 6, iy - 4)]
+        pygame.draw.lines(self.screen, (108, 92, 231), False, points, 2)
+        for px, py in points:
+            pygame.draw.circle(self.screen, (108, 92, 231), (px, py), 2)
+            
+        self.screen.blit(dash_surf, (ix + 12, self.padding + (header_h - dash_surf.get_height()) // 2))
+        
+        # Subtle horizontal divider line separating header from dashboard content
+        pygame.draw.line(self.screen, DIVIDER, 
+                         (self.padding, self.padding + header_h - 2), 
+                         (self.screen.get_width() - self.padding, self.padding + header_h - 2), 1)
         
         grid_offset_x = self.grid_offset_x
         grid_offset_y = self.grid_offset_y
@@ -277,7 +323,11 @@ class Renderer:
                 pygame.draw.rect(self.screen, color, rect, border_radius=3)
                 
                 name = sku.product_name[:3]
-                name_surf = self.font_tiny.render(name, True, (255, 255, 255))
+                # Dynamic high-contrast text color based on background color luminance
+                r_val, g_val, b_val = color
+                luminance = (0.299 * r_val + 0.587 * g_val + 0.114 * b_val) / 255
+                text_color = (26, 29, 32) if luminance > 0.6 else (255, 255, 255)
+                name_surf = self.font_tiny.render(name, True, text_color)
                 name_rect = name_surf.get_rect(center=rect.center)
                 self.screen.blit(name_surf, name_rect)
                 
@@ -320,7 +370,7 @@ class Renderer:
 
         # 4. LEFT PANEL: Product Catalog & Custom Cart Builder
         if not demo_mode:
-            left_rect = pygame.Rect(self.padding, self.padding, self.left_panel_width, self.screen.get_height() - self.padding * 2)
+            left_rect = pygame.Rect(self.padding, self.padding + header_h, self.left_panel_width, self.screen.get_height() - self.padding * 2 - header_h)
             lx, ly = self._draw_panel(left_rect, "Cart Builder & Catalog")
             
             btn_height = max(28, int(26 * self.ui_scale))
@@ -376,12 +426,135 @@ class Renderer:
             cart_clip_rect = pygame.Rect(lx, ly, self.left_panel_width - 20, list_height)
             self.screen.set_clip(cart_clip_rect)
             
-            cy = ly
-            for item in ui_state.custom_cart:
-                surf = self.font_small.render(f"- {item.product_name}", True, TEXT_SECONDARY)
-                self.screen.blit(surf, (lx + 10, cy))
-                cy += max(16, int(16 * self.ui_scale))
-                
+            if len(ui_state.custom_cart) == 0:
+                if self.empty_cart_image:
+                    img_rect = self.empty_cart_image.get_rect()
+                    target_w = int(cart_clip_rect.width * 0.95)
+                    target_h = int(img_rect.height * (target_w / img_rect.width))
+                    
+                    if target_h > cart_clip_rect.height:
+                        target_h = int(cart_clip_rect.height * 0.95)
+                        target_w = int(img_rect.width * (target_h / img_rect.height))
+                        
+                    scaled_img = pygame.transform.smoothscale(self.empty_cart_image, (target_w, target_h))
+                    ix = cart_clip_rect.centerx - target_w // 2
+                    iy = cart_clip_rect.centery - target_h // 2
+                    self.screen.blit(scaled_img, (ix, iy))
+                else:
+                    # Beautiful Empty Cart State UI (Fallback)
+                    ccx = cart_clip_rect.centerx
+                    ccy = cart_clip_rect.centery - 15 * self.ui_scale
+                    
+                    # 1. Circle Background: soft light blue/grey circle
+                    bg_radius = int(45 * self.ui_scale)
+                    bg_color = (240, 244, 248)
+                    pygame.draw.circle(self.screen, bg_color, (int(ccx), int(ccy)), bg_radius)
+                    
+                    # 2. Draw stars & decorative shapes
+                    # Star 1: top-right
+                    s1x = int(ccx + 32 * self.ui_scale)
+                    s1y = int(ccy - 20 * self.ui_scale)
+                    star1_pts = [
+                        (s1x, s1y - int(5 * self.ui_scale)),
+                        (s1x + int(1.5 * self.ui_scale), s1y - int(1.5 * self.ui_scale)),
+                        (s1x + int(5 * self.ui_scale), s1y),
+                        (s1x + int(1.5 * self.ui_scale), s1y + int(1.5 * self.ui_scale)),
+                        (s1x, s1y + int(5 * self.ui_scale)),
+                        (s1x - int(1.5 * self.ui_scale), s1y + int(1.5 * self.ui_scale)),
+                        (s1x - int(5 * self.ui_scale), s1y),
+                        (s1x - int(1.5 * self.ui_scale), s1y - int(1.5 * self.ui_scale))
+                    ]
+                    pygame.draw.polygon(self.screen, (180, 195, 210), star1_pts)
+                    
+                    # Star 2: bottom-left
+                    s2x = int(ccx - 30 * self.ui_scale)
+                    s2y = int(ccy + 15 * self.ui_scale)
+                    star2_pts = [
+                        (s2x, s2y - int(4 * self.ui_scale)),
+                        (s2x + int(1 * self.ui_scale), s2y - int(1 * self.ui_scale)),
+                        (s2x + int(4 * self.ui_scale), s2y),
+                        (s2x + int(1 * self.ui_scale), s2y + int(1 * self.ui_scale)),
+                        (s2x, s2y + int(4 * self.ui_scale)),
+                        (s2x - int(1 * self.ui_scale), s2y + int(1 * self.ui_scale)),
+                        (s2x - int(4 * self.ui_scale), s2y),
+                        (s2x - int(1 * self.ui_scale), s2y - int(1 * self.ui_scale))
+                    ]
+                    pygame.draw.polygon(self.screen, (180, 195, 210), star2_pts)
+
+                    # Decor circles and dots
+                    pygame.draw.circle(self.screen, (200, 212, 224), (int(ccx - 38 * self.ui_scale), int(ccy - 12 * self.ui_scale)), int(3 * self.ui_scale), 1)
+                    pygame.draw.circle(self.screen, (200, 212, 224), (int(ccx + 36 * self.ui_scale), int(ccy + 6 * self.ui_scale)), int(2.5 * self.ui_scale), 1)
+                    pygame.draw.circle(self.screen, (180, 195, 210), (int(ccx - 18 * self.ui_scale), int(ccy - 28 * self.ui_scale)), int(1.5 * self.ui_scale))
+                    pygame.draw.circle(self.screen, (180, 195, 210), (int(ccx + 22 * self.ui_scale), int(ccy - 24 * self.ui_scale)), int(2 * self.ui_scale))
+
+                    # 3. Draw Shopping Cart Outline
+                    cart_color = (122, 140, 163) # Slate blue for cart outline
+                    line_w = max(2, int(2.5 * self.ui_scale))
+                    
+                    # Basket vertices
+                    b_tl = (int(ccx - 16 * self.ui_scale), int(ccy - 12 * self.ui_scale))
+                    b_tr = (int(ccx + 18 * self.ui_scale), int(ccy - 10 * self.ui_scale))
+                    b_br = (int(ccx + 12 * self.ui_scale), int(ccy + 8 * self.ui_scale))
+                    b_bl = (int(ccx - 10 * self.ui_scale), int(ccy + 8 * self.ui_scale))
+                    
+                    # Draw basket outline
+                    pygame.draw.line(self.screen, cart_color, b_tl, b_tr, line_w)
+                    pygame.draw.line(self.screen, cart_color, b_tr, b_br, line_w)
+                    pygame.draw.line(self.screen, cart_color, b_br, b_bl, line_w)
+                    pygame.draw.line(self.screen, cart_color, b_bl, b_tl, line_w)
+                    
+                    # Grid inside basket
+                    for f in [0.25, 0.5, 0.75]:
+                        v_top = (int(b_tl[0] + f * (b_tr[0] - b_tl[0])), int(b_tl[1] + f * (b_tr[1] - b_tl[1])))
+                        v_bot = (int(b_bl[0] + f * (b_br[0] - b_bl[0])), int(b_bl[1] + f * (b_br[1] - b_bl[1])))
+                        pygame.draw.line(self.screen, cart_color, v_top, v_bot, max(1, line_w - 1))
+                    for f in [0.33, 0.66]:
+                        h_left = (int(b_tl[0] + f * (b_bl[0] - b_tl[0])), int(b_tl[1] + f * (b_bl[1] - b_tl[1])))
+                        h_right = (int(b_tr[0] + f * (b_br[0] - b_tr[0])), int(b_tr[1] + f * (b_br[1] - b_tr[1])))
+                        pygame.draw.line(self.screen, cart_color, h_left, h_right, max(1, line_w - 1))
+                    
+                    # Handle & Frame
+                    h_start = (int(ccx - 26 * self.ui_scale), int(ccy - 22 * self.ui_scale))
+                    h_bend = (int(ccx - 22 * self.ui_scale), int(ccy - 22 * self.ui_scale))
+                    h_bot_corner = (int(ccx - 14 * self.ui_scale), int(ccy + 10 * self.ui_scale))
+                    h_front = (int(ccx + 14 * self.ui_scale), int(ccy + 10 * self.ui_scale))
+                    
+                    pygame.draw.line(self.screen, cart_color, h_start, h_bend, line_w)
+                    pygame.draw.line(self.screen, cart_color, h_bend, h_bot_corner, line_w)
+                    pygame.draw.line(self.screen, cart_color, h_bot_corner, h_front, line_w)
+                    
+                    # Wheels
+                    w_rad = int(5 * self.ui_scale)
+                    w1_c = (int(ccx - 10 * self.ui_scale), int(ccy + 15 * self.ui_scale))
+                    w2_c = (int(ccx + 10 * self.ui_scale), int(ccy + 15 * self.ui_scale))
+                    pygame.draw.circle(self.screen, cart_color, w1_c, w_rad, line_w)
+                    pygame.draw.circle(self.screen, cart_color, w2_c, w_rad, line_w)
+                    pygame.draw.circle(self.screen, (255, 255, 255), w1_c, int(2 * self.ui_scale))
+                    pygame.draw.circle(self.screen, (255, 255, 255), w2_c, int(2 * self.ui_scale))
+                    
+                    # 4. Text Below
+                    empty_title_surf = self.font_bold.render("Your cart is empty", True, TEXT_HEADER)
+                    title_x = ccx - empty_title_surf.get_width() // 2
+                    title_y = ccy + 36 * self.ui_scale
+                    self.screen.blit(empty_title_surf, (title_x, title_y))
+                    
+                    sub1_surf = self.font_small.render("Add products from the catalog", True, TEXT_SECONDARY)
+                    sub2_surf = self.font_small.render("to get started.", True, TEXT_SECONDARY)
+                    
+                    sub1_x = ccx - sub1_surf.get_width() // 2
+                    sub1_y = title_y + empty_title_surf.get_height() + 4
+                    self.screen.blit(sub1_surf, (sub1_x, sub1_y))
+                    
+                    sub2_x = ccx - sub2_surf.get_width() // 2
+                    sub2_y = sub1_y + sub1_surf.get_height() + 2
+                    self.screen.blit(sub2_surf, (sub2_x, sub2_y))
+            else:
+                cy = ly
+                for item in ui_state.custom_cart:
+                    surf = self.font_small.render(f"- {item.product_name}", True, TEXT_SECONDARY)
+                    self.screen.blit(surf, (lx + 10, cy))
+                    cy += max(16, int(16 * self.ui_scale))
+            
             self.screen.set_clip(None)
                 
             # Buttons
@@ -405,7 +578,7 @@ class Renderer:
         right_x = self.right_x
         
         # Calculate dynamic gap between cards based on available height and heights of cards
-        available_height = self.screen.get_height() - self.padding * 2
+        available_height = self.screen.get_height() - self.padding * 2 - header_h
         
         # Base heights - increased optimization card size and padding
         h_sliders_base = 240 if not demo_mode else 70
@@ -424,14 +597,12 @@ class Renderer:
         
         sum_base = h_sliders_base + h_stats_base + h_kpis_base + h_orders_base + h_fleet_base + h_opt_base + h_controls_base
         
-        # Responsive scaling factor k and larger card gap
+        # Responsive scaling factor k
         if available_height > sum_base + 96: # 96px is 6 gaps of 16px
-            card_gap = 16   # Add more spacing between cards
             k = (available_height - 96) / sum_base
             k = min(1.35, k) # Cap slightly to avoid oversized elements
         else:
             k = 1.0
-            card_gap = max(6, (available_height - sum_base) // 6)
             
         # Compute scaled heights
         h_sliders = int(h_sliders_base * k)
@@ -442,7 +613,11 @@ class Renderer:
         h_opt = int(h_opt_base * k)
         h_controls = int(h_controls_base * k)
         
-        ry = self.padding
+        # Calculate dynamic gap equally between all boxes
+        total_cards_height = h_sliders + h_stats + h_kpis + h_orders + h_fleet + h_opt + h_controls
+        card_gap = max(6, (available_height - total_cards_height) // 6)
+        
+        ry = self.padding + header_h
 
         # --- Card 1: Sliders ---
         card1_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_sliders)
