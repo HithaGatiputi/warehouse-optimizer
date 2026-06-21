@@ -243,12 +243,11 @@ class Renderer:
         title_surf = self.font_title.render("Warehouse Optimizer", True, TEXT_HEADER)
         self.screen.blit(title_surf, (self.padding + 38, self.padding + (header_h - title_surf.get_height()) // 2))
         
-        # Render "Operations Dashboard" with tiny trend icon on the right
-        dash_surf = self.font_bold.render("Operations Dashboard", True, TEXT_PRIMARY)
-        dash_w = dash_surf.get_width()
+        # Render "Operations Dashboard" with tiny trend icon
+        dash_surf = self.font_heading.render("Operations Dashboard", True, TEXT_HEADER)
         
-        # Trend Graph Icon
-        ix = self.screen.get_width() - self.padding - dash_w - 20
+        # Trend Graph Icon aligned to self.right_x
+        ix = self.right_x + 8
         iy = self.padding + header_h // 2
         points = [(ix - 8, iy + 4), (ix - 4, iy + 1), (ix, iy + 5), (ix + 6, iy - 4)]
         pygame.draw.lines(self.screen, (108, 92, 231), False, points, 2)
@@ -621,7 +620,7 @@ class Renderer:
 
         # --- Card 1: Sliders ---
         card1_rect = pygame.Rect(right_x, ry, self.sidebar_width, h_sliders)
-        cx, cy = self._draw_card(card1_rect, "Operations Dashboard", has_icon=True)
+        cx, cy = self._draw_card(card1_rect, "Simulation Controls", has_icon=True)
         
         if not demo_mode:
             # Draw divider line above footer
