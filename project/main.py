@@ -166,9 +166,20 @@ def run_ui():
         right_x = renderer.grid_offset_x + grid_pixel_width + renderer.padding
         slider_width = int(renderer.sidebar_width - 40)
         sx = right_x + 20
+        
+        # Calculate dynamic scaling factor k matching renderer.py
+        available_height = renderer.screen.get_height() - renderer.padding * 2
+        orders_to_show = order_manager.active_orders[:2] + order_manager.pending_orders[:2]
+        h_orders_base = 55 if not orders_to_show else (42 + len(orders_to_show[:3]) * 15)
+        sum_base = 240 + 115 + 105 + h_orders_base + 80 + 65 + 80
+        if available_height > sum_base + 60:
+            k = min(1.5, (available_height - 60) / sum_base)
+        else:
+            k = 1.0
+            
         card1_y = renderer.padding
         for i, s in enumerate(sliders):
-            s.set_rect(sx, card1_y + 50 + i * 38, slider_width)
+            s.set_rect(sx, card1_y + int(50 * k) + i * int(38 * k), slider_width)
         ui_state.sliders = sliders
         
         # Determine Hovered Cell
