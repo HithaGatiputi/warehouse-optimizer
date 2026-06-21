@@ -78,37 +78,54 @@ class Renderer:
         self.sidebar_width = SIDEBAR_WIDTH
         self.padding = PADDING
         self.grid_offset_x = PADDING + LEFT_PANEL_WIDTH + PADDING
-        self.grid_offset_y = PADDING
+        self.grid_offset_y = PADDING + 12
+        self.right_x = self.grid_offset_x + TILE_SIZE * 25 + PADDING
         self.line_height = 20
         self._rebuild_fonts()
-        self.show_heatmap = True
+        self.show_heatmap = False
+        
+        # Load background image
+        import os
+        self.bg_image = None
+        self.bg_scaled = None
+        self._prev_size = (0, 0)
+        bg_path = "/Users/hithagatiputi/Documents/RVCE/DAA EL/DAA_EL/Backgroung.png"
+        if os.path.exists(bg_path):
+            try:
+                self.bg_image = pygame.image.load(bg_path)
+            except Exception as e:
+                print(f"Error loading background image: {e}")
         
     def _rebuild_fonts(self):
-        tiny_size = max(9, int(11 * self.ui_scale))
+        tiny_size = max(9, int(10 * self.ui_scale))     # Slightly smaller grid labels for clean serif look
         small_size = max(10, int(12 * self.ui_scale))
         normal_size = max(12, int(14 * self.ui_scale))
-        large_size = max(14, int(18 * self.ui_scale))
+        large_size = max(16, int(19 * self.ui_scale))   # Brandon Grotesque heading size
+        kpi_size = max(16, int(22 * self.ui_scale))     # Equalized value size (matches ForecastDriven)
         
         import os
         font_dir = os.path.join("project", "assets", "fonts")
+        brandon_bold = os.path.join(font_dir, "BrandonGrotesque-Bold.ttf")
         
         try:
-            self.font_heading = pygame.font.Font(os.path.join(font_dir, "Inter-SemiBold.ttf"), large_size)
-            self.font_subheading = pygame.font.Font(os.path.join(font_dir, "Inter-SemiBold.ttf"), normal_size)
-            self.font_label = pygame.font.Font(os.path.join(font_dir, "Inter-Medium.ttf"), normal_size)
-            self.font_bold = pygame.font.Font(os.path.join(font_dir, "Inter-Bold.ttf"), normal_size)
-            self.font_regular = pygame.font.Font(os.path.join(font_dir, "Inter-Regular.ttf"), normal_size)
-            self.font_tiny = pygame.font.Font(os.path.join(font_dir, "Inter-Regular.ttf"), tiny_size)
-            self.font_small = pygame.font.Font(os.path.join(font_dir, "Inter-Regular.ttf"), small_size)
+            self.font_heading = pygame.font.Font(brandon_bold, large_size)
+            self.font_subheading = pygame.font.Font(brandon_bold, normal_size + 2)
+            self.font_kpi_value = pygame.font.Font(brandon_bold, kpi_size)
+            self.font_opt_value = pygame.font.Font(brandon_bold, kpi_size)
         except Exception as e:
-            print(f"Error loading custom Inter fonts: {e}. Falling back to Arial.")
+            print(f"Error loading custom Brandon Grotesque fonts: {e}. Falling back to Arial.")
             self.font_heading = pygame.font.SysFont("Arial", large_size, bold=True)
-            self.font_subheading = pygame.font.SysFont("Arial", normal_size, bold=True)
-            self.font_label = pygame.font.SysFont("Arial", normal_size, bold=False)
-            self.font_bold = pygame.font.SysFont("Arial", normal_size, bold=True)
-            self.font_regular = pygame.font.SysFont("Arial", normal_size)
-            self.font_tiny = pygame.font.SysFont("Arial", tiny_size)
-            self.font_small = pygame.font.SysFont("Arial", small_size)
+            self.font_subheading = pygame.font.SysFont("Arial", normal_size + 2, bold=True)
+            self.font_kpi_value = pygame.font.SysFont("Arial", kpi_size, bold=True)
+            self.font_opt_value = pygame.font.SysFont("Arial", kpi_size, bold=True)
+            
+        # Load Charter for labels, small text and body to keep hybrid serif appearance
+        self.font_label = pygame.font.SysFont("charter", normal_size, bold=False)
+        self.font_bold = pygame.font.SysFont("charter", normal_size, bold=True)
+        self.font_regular = pygame.font.SysFont("charter", normal_size, bold=False)
+        self.font_tiny = pygame.font.SysFont("charter", tiny_size, bold=False)
+        self.font_small = pygame.font.SysFont("charter", small_size, bold=False)
+        self.font_slider = pygame.font.SysFont("charter", max(13, int(15 * self.ui_scale)), bold=True)
 
         # Fallbacks for legacy/base code references:
         self.font = self.font_regular
@@ -135,9 +152,25 @@ class Renderer:
         self.left_panel_width = max(min_side, int(self.base_left_panel_width * self.ui_scale))
         self.sidebar_width = max(min_sidebar, int(self.base_sidebar_width * self.ui_scale))
         self.padding = max(8, int(self.base_padding * self.ui_scale))
-        self.grid_offset_x = self.padding + self.left_panel_width + self.padding
-        self.grid_offset_y = self.padding
+        # Dynamically distribute remaining horizontal space as equal gaps
+        grid_w = layout.cols * self.tile_size
+        card_pad = 12
+        w_left = self.left_panel_width
+        w_middle = grid_w + 2 * card_pad
+        w_right = self.sidebar_width
+        
+        remaining_w = win_w - 2 * self.padding - (w_left + w_middle + w_right)
+        gap = max(self.padding, remaining_w // 2) if remaining_w > 0 else self.padding
+        
+        self.grid_offset_x = self.padding + w_left + gap + card_pad
+        self.grid_offset_y = self.padding + 12
+        self.right_x = self.padding + w_left + gap + w_middle + gap
         self._rebuild_fonts()
+        if self.bg_image:
+            if self._prev_size != (win_w, win_h):
+                self.bg_scaled = pygame.transform.scale(self.bg_image, (win_w, win_h))
+                self.bg_scaled.set_alpha(75)  # Set opacity to ~30% to keep it clean and subtle
+                self._prev_size = (win_w, win_h)
 
     def _get_heatmap_color(self, value: float) -> tuple:
         if value <= 0: return None
@@ -148,9 +181,9 @@ class Renderer:
     def _draw_panel(self, rect: pygame.Rect, title: str):
         pygame.draw.rect(self.screen, BG_SECONDARY, rect, border_radius=8)
         title_surf = self.font_large.render(title, True, TEXT_HEADER)
-        self.screen.blit(title_surf, (rect.x + 15, rect.y + 15))
-        pygame.draw.line(self.screen, DIVIDER, (rect.x + 15, rect.y + 40), (rect.right - 15, rect.y + 40), 1)
-        return rect.x + 15, rect.y + 50
+        self.screen.blit(title_surf, (rect.x + 15, rect.y + 8))
+        pygame.draw.line(self.screen, DIVIDER, (rect.x + 15, rect.y + 32), (rect.right - 15, rect.y + 32), 1)
+        return rect.x + 15, rect.y + 40
 
     def _draw_card(self, rect: pygame.Rect, title: str, has_icon=False):
         pygame.draw.rect(self.screen, BG_SECONDARY, rect, border_radius=8)
@@ -176,16 +209,29 @@ class Renderer:
                metrics: dict, order_manager: OrderManager, congestion: CongestionManager, 
                heatmap: HeatmapManager, forecaster: DemandForecaster, slotting: SlottingEngine, 
                demo_mode: bool, ui_state: UIState):
-        self.screen.fill(BG_PRIMARY)
-        
         win_w, win_h = self.screen.get_size()
         self._update_layout(layout, win_w, win_h)
+        
+        self.screen.fill(BG_PRIMARY)
+        if self.bg_scaled:
+            self.screen.blit(self.bg_scaled, (0, 0))
         
         grid_offset_x = self.grid_offset_x
         grid_offset_y = self.grid_offset_y
         
         # 1. Draw Grid
         heatmap_data = heatmap.get_normalized_heatmap()
+        
+        # Floating white card with rounded corners and a shadow behind the grid
+        grid_w = layout.cols * self.tile_size
+        grid_h = layout.rows * self.tile_size
+        card_pad = 12
+        grid_card = pygame.Rect(grid_offset_x - card_pad, grid_offset_y - card_pad, grid_w + card_pad * 2, grid_h + card_pad * 2)
+        
+        # Subtle offset shadow (soft grey)
+        pygame.draw.rect(self.screen, (225, 229, 235), grid_card.move(2, 3), border_radius=12)
+        # Main white card body
+        pygame.draw.rect(self.screen, (255, 255, 255), grid_card, border_radius=12)
         
         for r in range(layout.rows):
             for c in range(layout.cols):
@@ -208,7 +254,7 @@ class Renderer:
                         h_color = self._get_heatmap_color(heatmap_data[r, c])
                         if h_color:
                             s = pygame.Surface((self.tile_size, self.tile_size))
-                            s.set_alpha(100) # softer blend
+                            s.set_alpha(180) # less transparent, stronger color
                             s.fill(h_color)
                             self.screen.blit(s, (rect.x, rect.y))
 
@@ -302,19 +348,20 @@ class Renderer:
                     seen_names.add(s.product_name)
             
             for sku in unique_skus:
-                item_rect = pygame.Rect(lx, ly - scroll_offset, self.left_panel_width - 30, max(18, int(18 * self.ui_scale)))
+                # Slightly increased height and spacing for catalog items
+                item_rect = pygame.Rect(lx, ly - scroll_offset, self.left_panel_width - 30, max(24, int(24 * self.ui_scale)))
                 
                 if item_rect.bottom > clip_rect.top and item_rect.top < clip_rect.bottom:
                     pygame.draw.rect(self.screen, BG_PRIMARY, item_rect, border_radius=4)
                     cat_color = ITEM_CLASS_A if sku.abc_class == "A" else ITEM_CLASS_B if sku.abc_class == "B" else ITEM_CLASS_C
                     pygame.draw.circle(self.screen, cat_color, (lx + 10, item_rect.centery), 4)
                     
-                    text = f"{sku.product_name[:12]} | {sku.category[:8]} | v:{int(sku.velocity)}"
+                    text = f"{sku.product_name[:15]} | {sku.category[:15]} | v:{int(sku.velocity)}"
                     surf = self.font_small.render(text, True, TEXT_PRIMARY)
-                    self.screen.blit(surf, (lx + 20, item_rect.y + 3))
+                    self.screen.blit(surf, (lx + 20, item_rect.y + (item_rect.height - surf.get_height()) // 2))
                     
                 ui_state.catalog_rects[sku.sku_id] = item_rect
-                ly += 24
+                ly += 30
                 
             self.screen.set_clip(None)
             ly = clip_rect.bottom + 10
@@ -355,12 +402,12 @@ class Renderer:
         # 5. RIGHT PANEL: Dark Store Operations Dashboard (Card-based layout)
         import math
         grid_pixel_width = layout.cols * self.tile_size
-        right_x = grid_offset_x + grid_pixel_width + self.padding
+        right_x = self.right_x
         
         # Calculate dynamic gap between cards based on available height and heights of cards
         available_height = self.screen.get_height() - self.padding * 2
         
-        # Base heights
+        # Base heights - increased optimization card size and padding
         h_sliders_base = 240 if not demo_mode else 70
         h_stats_base = 115
         h_kpis_base = 105
@@ -372,19 +419,19 @@ class Renderer:
             h_orders_base = 42 + len(orders_to_show[:3]) * 15
             
         h_fleet_base = 80
-        h_opt_base = 65
+        h_opt_base = 85    # Increased height and padding for optimization card
         h_controls_base = 80
         
         sum_base = h_sliders_base + h_stats_base + h_kpis_base + h_orders_base + h_fleet_base + h_opt_base + h_controls_base
         
-        # Responsive scaling factor k and card gap
-        if available_height > sum_base + 60: # 60px is 6 gaps of 10px
-            card_gap = 10
-            k = (available_height - 60) / sum_base
-            k = min(1.5, k) # Cap to avoid oversized text spacing
+        # Responsive scaling factor k and larger card gap
+        if available_height > sum_base + 96: # 96px is 6 gaps of 16px
+            card_gap = 16   # Add more spacing between cards
+            k = (available_height - 96) / sum_base
+            k = min(1.35, k) # Cap slightly to avoid oversized elements
         else:
             k = 1.0
-            card_gap = max(4, (available_height - sum_base) // 6)
+            card_gap = max(6, (available_height - sum_base) // 6)
             
         # Compute scaled heights
         h_sliders = int(h_sliders_base * k)
@@ -448,31 +495,32 @@ class Renderer:
         unique_catalog = len(set([s.product_name for s in inventory.get_all_skus()]))
         
         # Row 1, Column 1: Shelf Utilization
-        lbl = self.font_label.render("Shelf Utilization", True, TEXT_SECONDARY)
-        self.screen.blit(lbl, (col1_x, card2_rect.y + int(30 * k)))
-        val = self.font_bold.render(f"{utilization:.1f}%", True, (41, 128, 185))
-        self.screen.blit(val, (col1_x, card2_rect.y + int(46 * k)))
+        # Row 1, Column 1: Shelf Utilization
+        val = self.font_kpi_value.render(f"{utilization:.1f}%", True, (41, 128, 185))
+        self.screen.blit(val, (col1_x, card2_rect.y + int(28 * k)))
+        lbl = self.font_small.render("Shelf Utilization", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col1_x, card2_rect.y + int(52 * k)))
         
         # Row 1, Column 2: Catalog Size
-        lbl = self.font_label.render("Catalog Size", True, TEXT_SECONDARY)
-        self.screen.blit(lbl, (col2_x, card2_rect.y + int(30 * k)))
-        val = self.font_bold.render(str(unique_catalog), True, TEXT_PRIMARY)
-        self.screen.blit(val, (col2_x, card2_rect.y + int(46 * k)))
-        sfx = self.font_small.render("distinct products", True, TEXT_SECONDARY)
-        self.screen.blit(sfx, (col2_x, card2_rect.y + int(62 * k)))
+        val = self.font_kpi_value.render(str(unique_catalog), True, TEXT_PRIMARY)
+        self.screen.blit(val, (col2_x, card2_rect.y + int(28 * k)))
+        lbl = self.font_small.render("Catalog Size", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col2_x, card2_rect.y + int(52 * k)))
+        sfx = self.font_tiny.render("distinct products", True, TEXT_SECONDARY)
+        self.screen.blit(sfx, (col2_x, card2_rect.y + int(64 * k)))
         
         # Row 2, Column 1: Total Physical Units
-        lbl = self.font_label.render("Total Physical Units", True, TEXT_SECONDARY)
-        self.screen.blit(lbl, (col1_x, card2_rect.y + int(78 * k)))
-        val = self.font_bold.render(str(num_skus), True, TEXT_PRIMARY)
-        self.screen.blit(val, (col1_x, card2_rect.y + int(94 * k)))
+        val = self.font_kpi_value.render(str(num_skus), True, TEXT_PRIMARY)
+        self.screen.blit(val, (col1_x, card2_rect.y + int(72 * k)))
+        lbl = self.font_small.render("Total Physical Units", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col1_x, card2_rect.y + int(94 * k)))
         
         # Row 2, Column 2: Active Pickers
-        lbl = self.font_label.render("Active Pickers", True, TEXT_SECONDARY)
-        self.screen.blit(lbl, (col2_x, card2_rect.y + int(78 * k)))
         active_pickers = sum(1 for p in pickers if p.state != PickerState.IDLE)
-        val = self.font_bold.render(f"{active_pickers}/{len(pickers)}", True, TEXT_PRIMARY)
-        self.screen.blit(val, (col2_x, card2_rect.y + int(94 * k)))
+        val = self.font_kpi_value.render(f"{active_pickers}/{len(pickers)}", True, TEXT_PRIMARY)
+        self.screen.blit(val, (col2_x, card2_rect.y + int(72 * k)))
+        lbl = self.font_small.render("Active Pickers", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col2_x, card2_rect.y + int(94 * k)))
 
         ry += h_stats + card_gap
 
@@ -485,30 +533,30 @@ class Renderer:
         acc_color = (39, 174, 96) if acc > 80 else (241, 196, 15) if acc > 50 else (211, 47, 47)
         
         # Row 1, Column 1: Queue Size
-        lbl = self.font_label.render("Queue Size", True, TEXT_SECONDARY)
-        self.screen.blit(lbl, (col1_x, card3_rect.y + int(30 * k)))
-        val = self.font_bold.render(str(om_metrics['pending']), True, TEXT_PRIMARY)
-        self.screen.blit(val, (col1_x, card3_rect.y + int(44 * k)))
+        val = self.font_kpi_value.render(str(om_metrics['pending']), True, TEXT_PRIMARY)
+        self.screen.blit(val, (col1_x, card3_rect.y + int(28 * k)))
+        lbl = self.font_small.render("Queue Size", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col1_x, card3_rect.y + int(50 * k)))
         
         # Row 1, Column 2: Completed Orders
-        lbl = self.font_label.render("Completed Orders", True, TEXT_SECONDARY)
-        self.screen.blit(lbl, (col2_x, card3_rect.y + int(30 * k)))
-        val = self.font_bold.render(str(om_metrics['completed']), True, TEXT_PRIMARY)
-        self.screen.blit(val, (col2_x, card3_rect.y + int(44 * k)))
+        val = self.font_kpi_value.render(str(om_metrics['completed']), True, TEXT_PRIMARY)
+        self.screen.blit(val, (col2_x, card3_rect.y + int(28 * k)))
+        lbl = self.font_small.render("Completed Orders", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col2_x, card3_rect.y + int(50 * k)))
         
         # Row 2, Column 1: Avg Fulfillment
-        lbl = self.font_label.render("Avg Fulfillment", True, TEXT_SECONDARY)
-        self.screen.blit(lbl, (col1_x, card3_rect.y + int(60 * k)))
-        val_surf = self.font_bold.render(f"{om_metrics['avg_fulfillment_time']:.1f}", True, TEXT_PRIMARY)
-        self.screen.blit(val_surf, (col1_x, card3_rect.y + int(74 * k)))
-        sfx_surf = self.font_regular.render(" ticks", True, TEXT_SECONDARY)
-        self.screen.blit(sfx_surf, (col1_x + val_surf.get_width(), card3_rect.y + int(74 * k) + (val_surf.get_height() - sfx_surf.get_height()) // 2))
+        val_surf = self.font_kpi_value.render(f"{om_metrics['avg_fulfillment_time']:.1f}", True, TEXT_PRIMARY)
+        self.screen.blit(val_surf, (col1_x, card3_rect.y + int(66 * k)))
+        sfx_surf = self.font_tiny.render(" ticks", True, TEXT_SECONDARY)
+        self.screen.blit(sfx_surf, (col1_x + val_surf.get_width(), card3_rect.y + int(66 * k) + (val_surf.get_height() - sfx_surf.get_height()) // 2 + 2))
+        lbl = self.font_small.render("Avg Fulfillment", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col1_x, card3_rect.y + int(86 * k)))
         
         # Row 2, Column 2: Forecast Accuracy
-        lbl = self.font_label.render("Forecast Accuracy", True, TEXT_SECONDARY)
-        self.screen.blit(lbl, (col2_x, card3_rect.y + int(60 * k)))
-        val = self.font_bold.render(f"{acc:.1f}%", True, acc_color)
-        self.screen.blit(val, (col2_x, card3_rect.y + int(74 * k)))
+        val = self.font_kpi_value.render(f"{acc:.1f}%", True, acc_color)
+        self.screen.blit(val, (col2_x, card3_rect.y + int(66 * k)))
+        lbl = self.font_small.render("Forecast Accuracy", True, TEXT_SECONDARY)
+        self.screen.blit(lbl, (col2_x, card3_rect.y + int(86 * k)))
 
         ry += h_kpis + card_gap
 
@@ -582,21 +630,20 @@ class Renderer:
         dist = metrics.get('avg_storage_distance', 0.0)
         
         # Column 1: Active Strategy
-        strat_lbl = self.font_label.render("Active Strategy", True, TEXT_SECONDARY)
-        self.screen.blit(strat_lbl, (cx, card6_rect.y + int(26 * k)))
-        strat_val = self.font_bold.render(strategy, True, (108, 92, 231))
-        self.screen.blit(strat_val, (cx, card6_rect.y + int(40 * k)))
+        strat_val = self.font_opt_value.render(strategy, True, (108, 92, 231))
+        self.screen.blit(strat_val, (cx, card6_rect.y + int(28 * k)))
+        strat_lbl = self.font_small.render("Active Strategy", True, TEXT_SECONDARY)
+        self.screen.blit(strat_lbl, (cx, card6_rect.y + int(56 * k)))
         
         # Column 2: Storage Distance
-        dist_lbl = self.font_label.render("Storage Distance", True, TEXT_SECONDARY)
-        self.screen.blit(dist_lbl, (col2_x, card6_rect.y + int(26 * k)))
-        
         dist_val_str = f"{dist:.1f}"
-        dist_surf = self.font_bold.render(dist_val_str, True, TEXT_PRIMARY)
-        self.screen.blit(dist_surf, (col2_x, card6_rect.y + int(40 * k)))
+        dist_surf = self.font_opt_value.render(dist_val_str, True, TEXT_PRIMARY)
+        self.screen.blit(dist_surf, (col2_x, card6_rect.y + int(28 * k)))
+        sfx_surf = self.font_tiny.render(" steps", True, TEXT_SECONDARY)
+        self.screen.blit(sfx_surf, (col2_x + dist_surf.get_width(), card6_rect.y + int(28 * k) + (dist_surf.get_height() - sfx_surf.get_height()) // 2 + 2))
         
-        sfx_surf = self.font_regular.render(" steps", True, TEXT_SECONDARY)
-        self.screen.blit(sfx_surf, (col2_x + dist_surf.get_width(), card6_rect.y + int(40 * k) + (dist_surf.get_height() - sfx_surf.get_height()) // 2))
+        dist_lbl = self.font_small.render("Storage Distance", True, TEXT_SECONDARY)
+        self.screen.blit(dist_lbl, (col2_x, card6_rect.y + int(56 * k)))
 
         ry += h_opt + card_gap
 
@@ -616,12 +663,12 @@ class Renderer:
         ]
         
         for idx, shortcut in enumerate(col1_shortcuts):
-            s_surf = self.font_small.render(shortcut, True, TEXT_SECONDARY)
-            self.screen.blit(s_surf, (cx, card7_rect.y + int(26 * k) + idx * 13))
+            s_surf = self.font_tiny.render(shortcut, True, TEXT_SECONDARY)  # Smaller, lighter text
+            self.screen.blit(s_surf, (cx, card7_rect.y + int(28 * k) + idx * 12))
             
         for idx, shortcut in enumerate(col2_shortcuts):
-            s_surf = self.font_small.render(shortcut, True, TEXT_SECONDARY)
-            self.screen.blit(s_surf, (col2_x, card7_rect.y + int(26 * k) + idx * 13))
+            s_surf = self.font_tiny.render(shortcut, True, TEXT_SECONDARY)  # Smaller, lighter text
+            self.screen.blit(s_surf, (col2_x, card7_rect.y + int(28 * k) + idx * 12))
 
         ry += h_controls + card_gap
 
@@ -741,7 +788,7 @@ class Renderer:
         try:
             if not demo_mode and hasattr(ui_state, 'sliders') and ui_state.sliders:
                 for s in ui_state.sliders:
-                    s.draw(self.screen, self.font_label)
+                    s.draw(self.screen, self.font_slider)  # Use font_slider (bold & slightly larger)
         except Exception:
             pass
 

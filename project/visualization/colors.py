@@ -30,8 +30,8 @@ GRID_LINE_COLOR = (234, 234, 236)         # Faint grid lines
 ITEM_DEFAULT = (116, 122, 128)            # Standard item on shelf (muted grey)
 ITEM_IN_ORDER = (241, 196, 15)             # Highlighted — in current order (yellow border)
 ITEM_CLASS_A = (222, 92, 60)              # High demand — terracotta orange
-ITEM_CLASS_B = (239, 166, 136)            # Medium demand — peach orange
-ITEM_CLASS_C = (246, 220, 210)            # Low demand — pale pink-peach
+ITEM_CLASS_B = (229, 146, 116)            # Medium demand — saturated peach orange
+ITEM_CLASS_C = (236, 190, 175)            # Low demand — solid pink-peach
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  PATH & ROUTE COLORS
@@ -88,9 +88,9 @@ STATUS_INFO = (47, 128, 237)              # Blue
 #  HEATMAP GRADIENT (cold → hot)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HEATMAP_GRADIENT = [
-    (255, 230, 220),    # Faint pink
-    (255, 200, 180),    # Soft orange
-    (255, 160, 130),    # Bright orange
-    (239, 116, 86),     # Deep orange
-    (222, 92, 60),      # Terracotta red-orange
+    (253, 229, 216),    # Low Demand: #FDE5D8
+    (250, 198, 169),    # Low-Medium Transition
+    (248, 168, 122),    # Medium Demand: #F8A87A
+    (240, 130, 82),     # Medium-High Transition
+    (232, 93, 42),      # High Demand: #E85D2A
 ]
