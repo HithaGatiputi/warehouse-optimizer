@@ -176,11 +176,10 @@ def run_ui():
         available_height = renderer.screen.get_height() - renderer.padding * 2 - int(header_height * renderer.ui_scale)
         orders_to_show = order_manager.active_orders[:2] + order_manager.pending_orders[:2]
         h_orders_base = 55 if not orders_to_show else (42 + len(orders_to_show[:3]) * 15)
-        sum_base = 240 + 115 + 105 + h_orders_base + 80 + 85 + 80
-        if available_height > sum_base + 96:
-            k = min(1.35, (available_height - 96) / sum_base)
-        else:
-            k = 1.0
+        h_sliders_base = 240 if not demo_mode else 70
+        sum_base = h_sliders_base + 115 + 105 + h_orders_base + 80 + 85 + 80
+        k = (available_height - 96) / sum_base
+        k = min(1.35, max(0.5, k))
             
         card1_y = renderer.padding + int(header_height * renderer.ui_scale)
         for i, s in enumerate(sliders):

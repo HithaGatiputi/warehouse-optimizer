@@ -65,7 +65,20 @@ def draw_common_logo(surface, cx, cy, color, bg_color):
 class Renderer:
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+        try:
+            info = pygame.display.Info()
+            desktop_w = info.current_w
+            desktop_h = info.current_h
+            max_w = int(desktop_w * 0.95)
+            max_h = int(desktop_h * 0.85)
+            init_w = min(SCREEN_WIDTH, max_w)
+            init_h = min(SCREEN_HEIGHT, max_h)
+            init_w = max(1024, init_w)
+            init_h = max(700, init_h)
+        except Exception:
+            init_w = SCREEN_WIDTH
+            init_h = SCREEN_HEIGHT
+        self.screen = pygame.display.set_mode((init_w, init_h), pygame.RESIZABLE)
         pygame.display.set_caption("Quick-Commerce Dark Store Operations Platform")
         self.base_tile_size = TILE_SIZE
         self.base_left_panel_width = LEFT_PANEL_WIDTH
@@ -89,7 +102,8 @@ class Renderer:
         self.bg_image = None
         self.bg_scaled = None
         self._prev_size = (0, 0)
-        bg_path = "/Users/hithagatiputi/Documents/RVCE/DAA EL/DAA_EL/Backgroung.png"
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        bg_path = os.path.join(project_root, "Backgroung.png")
         if os.path.exists(bg_path):
             try:
                 self.bg_image = pygame.image.load(bg_path)
@@ -97,7 +111,7 @@ class Renderer:
                 print(f"Error loading background image: {e}")
                 
         self.empty_cart_image = None
-        empty_cart_path = "/Users/hithagatiputi/Documents/RVCE/DAA EL/DAA_EL/project/assets/images/empty_cart.png"
+        empty_cart_path = os.path.join(project_root, "project", "assets", "images", "empty_cart.png")
         if os.path.exists(empty_cart_path):
             try:
                 self.empty_cart_image = pygame.image.load(empty_cart_path)
@@ -113,7 +127,8 @@ class Renderer:
         kpi_size = max(16, int(22 * self.ui_scale))     # Equalized value size (matches ForecastDriven)
         
         import os
-        font_dir = os.path.join("project", "assets", "fonts")
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        font_dir = os.path.join(project_root, "project", "assets", "fonts")
         brandon_bold = os.path.join(font_dir, "BrandonGrotesque-Bold.ttf")
         
         try:
@@ -597,11 +612,8 @@ class Renderer:
         sum_base = h_sliders_base + h_stats_base + h_kpis_base + h_orders_base + h_fleet_base + h_opt_base + h_controls_base
         
         # Responsive scaling factor k
-        if available_height > sum_base + 96: # 96px is 6 gaps of 16px
-            k = (available_height - 96) / sum_base
-            k = min(1.35, k) # Cap slightly to avoid oversized elements
-        else:
-            k = 1.0
+        k = (available_height - 96) / sum_base
+        k = min(1.35, max(0.5, k))
             
         # Compute scaled heights
         h_sliders = int(h_sliders_base * k)
